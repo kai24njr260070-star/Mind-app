@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "preview": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "sites:build": "npm run build && esbuild worker/index.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=freebuff-sites-build/worker/index.js && rm -rf freebuff-sites-build/assets && cp -R dist freebuff-sites-build/assets",
     "worker:dev": "wrangler dev"
   },
   "dependencies": {

@@ -131,3 +131,41 @@ src/App.tsx           画面合成・下部ナビ・起動シーケンス制御
 - 実機(iOS/Android)でのピンチ/ドラッグの操作感。
 - AI 鍵未設定環境のため、AI 候補・Reflection AI の実生成は鍵設定後に要確認(フォールバック動作は確認済み)。
 - D1 へのデータ移行は本リポジトリの範囲外(現状 localStorage + JSON バックアップ)。
+
+## Cloudflare への公開
+
+このアプリは **Cloudflare Workers + Static Assets** 構成です。`wrangler.jsonc` が `main: worker/index.ts`、`assets.directory: ./dist`(バインディング `ASSETS`)を指定しており、Worker が `/api/ai/*` を処理して、それ以外は静的ファイルを返します。
+
+### 自分の Cloudflare アカウントへ公開する
+
+```bash
+npx wrangler login     # 初回のみ(ブラウザで認証)
+npm run deploy         # tsc && vite build → wrangler deploy
+```
+
+公開URLは `https://mind-signature.<あなたのサブドメイン>.workers.dev` になります。
+
+### サーバー側に AI キーを置く場合(任意)
+
+既定では、設定画面で入力したキーがリクエスト時だけヘッダで Worker へ渡るため、公開に秘密情報は不要です(訪問者は各自のキーを使う)。全訪問者にオーナーのキーを使わせたい場合のみ:
+
+```bash
+npx wrangler secret put GROQ_API_KEY      # または OPENAI_API_KEY
+```
+
+### ローカルで本番同等の確認
+
+```bash
+npm run preview        # build → wrangler dev (http://localhost:8787)
+```
+
+### マネージド公開(Freebuff Sites)
+
+Sites 用のデプロイマニフェストは `freebuff-sites-build/manifest.json`(gitignore 対象)。更新手順は次のとおりです。
+
+```bash
+npm run sites:build    # build → worker を esbuild でバンドル → assets をコピー
+```
+
+生成物は `freebuff-sites-build/worker/index.js`(ESMバンドル)と `freebuff-sites-build/assets/`(dist の中身)です。これを `freebuff-sites-build/manifest.json` で指定してデプロイします。
+
