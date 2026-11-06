@@ -1,5 +1,6 @@
 import type { AICandidate, AppState, FissionError, Goal, Memo, Reflection, ReflectionAction, Settings } from "./types";
 import { requestFissionCandidates } from "./api";
+import { autoBackup, backupDataAt, payloadOf } from "./backup";
 
 const STORAGE_KEY = "mind-signature-v1";
 const SETTINGS_KEY = "mind-signature-settings-v1";
@@ -81,10 +82,17 @@ function loadPersisted(): void {
   }
 }
 
+/** 破壊的操作の直前に、現在の内容を必ずバックアップとして残す。 */
+function backupNow(): void {
+  autoBackup(payloadOf(state), Date.now(), true);
+}
+
 function persist(): void {
   try {
-    const data = { goals: state.goals, candidates: state.candidates, memos: state.memos, reflections: state.reflections };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    const json = payloadOf(state);
+    localStorage.setItem(STORAGE_KEY, json);
+    // 直近数世代を端末内へ自動保存(通常は5分おきに1世代へまとめる)
+    autoBackup(json);
   } catch {
     // 保存に失敗してもアプリ動作は継続(メモリ内)
   }
@@ -353,6 +361,7 @@ export function setGoalStatus(id: string, status: "active" | "completed"): void 
 
 /** 子孫を含めて削除する。 */
 export function deleteGoalDeep(id: string): void {
+  backupNow();
   const toRemove = new Set<string>([id]);
   let grew = true;
   while (grew) {
@@ -470,6 +479,8 @@ export function importData(json: string): { ok: boolean; error?: string } {
   try {
     const parsed = JSON.parse(json) as Record<string, unknown>;
     if (!Array.isArray(parsed.goals)) return { ok: false, error: "goals が配列ではありません" };
+    // 上書き前の内容を必ず残す(復元操作そのものを取り消せるように)
+    backupNow();
     state = {
       goals: parsed.goals as Goal[],
       candidates: Array.isArray(parsed.candidates) ? (parsed.candidates as AppState["candidates"]) : [],
@@ -487,7 +498,16 @@ export function importData(json: string): { ok: boolean; error?: string } {
   }
 }
 
+/** 自動バックアップの指定世代へ戻す(設定画面から。呼び出し前に確認を取ること)。 */
+export function restoreBackupAt(at: number): { ok: boolean; error?: string } {
+  const data = backupDataAt(at);
+  if (!data) return { ok: false, error: "バックアップが見つかりません" };
+  return importData(data);
+}
+
 export function clearAllData(): void {
+  // 全削除も取り消せるように、削除前の状態を残す
+  backupNow();
   state = { goals: [], candidates: [], memos: [], reflections: [], selection: null, fission: null, fx: null };
   try {
     localStorage.removeItem(STORAGE_KEY);

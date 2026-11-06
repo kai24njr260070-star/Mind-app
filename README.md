@@ -36,7 +36,15 @@
   - スキップボタン/画面タップで即終了。`prefers-reduced-motion` と設定画面のスキップ指定を尊重。
   - 演出終了はアプリの準備完了と無関係(読み込みを遅らせない)。
 - **効果音**(`src/sound.ts`):WebAudio による短い電子音。**既定はオフ**(消音状態を尊重)。
-- **データ管理**(設定画面):バックアップ書き出し(JSON)/ファイルからの復元(確認ダイアログあり)/全削除(2段階確認)。## 技術スタックと仮定
+- **データ管理**(設定画面):バックアップ書き出し(JSON)/ファイルからの復元(確認ダイアログあり)/全削除(2段階確認)。
+
+## Phase 5 — 運用まわり(継続利用のための補強)
+
+- **自動バックアップ(端末内)**(`src/backup.ts`):目標・候補履歴・メモ・振り返りを5分おきにスナップショットし、直近5世代を localStorage に保持。全削除・読み込み・目標削除の**直前**には必ず1世代残すため、誤操作しても設定画面の「この時点に戻す」から復元できる。端末外へは送信しない。
+- **横断検索(⌘K / Ctrl+K)**(`src/paletteSearch.ts` + `src/CommandPalette.tsx`):目標・メモ・画面を横断検索。前方一致を優先し、選択でその星/画面へ移動する。キーボードの無い端末向けにヘッダーの「検索」ボタンからも開ける。
+- **テストとCI**:`npm test`(Vitest)で保存・復元・検証ロジックを確認。GitHub Actions(`.github/workflows/ci.yml`)が push ごとに型検査・ビルド・テストを実行する。
+
+## 技術スタックと仮定
 
 | 項目 | 選択 | 仮定/理由 |
 |---|---|---|
@@ -93,6 +101,10 @@ index.html            画面の土台
 worker/index.ts       Worker(/api/ai/fission + /api/ai/reflection + 静的配信)
 src/types.ts          Goal / CandidateRecord / Memo / Reflection / Settings データモデル
 src/store.ts          状態管理(イミュータブル)+ localStorage 永続化 + 書き出し/復元
+src/backup.ts         端末内の自動バックアップ(直近5世代・破壊操作の直前は必ず保存)
+src/paletteSearch.ts  ⌘K検索のインデックス構築とスコアリング(純粋関数)
+src/CommandPalette.tsx  検索パレット(⌘K / ヘッダーの「検索」)
+tests/                Vitest によるロジックのテスト(backup / store / reflection / paletteSearch)
 src/api.ts            /api/ai/* クライアント
 src/reflection.ts     停滞検知とオフライン用ルール判定(spec §7.2)
 src/universe/layout.ts  目標ツリー → 星の座標(周囲に子星を放射配置)
@@ -124,6 +136,9 @@ src/App.tsx           画面合成・下部ナビ・起動シーケンス制御
   - 詳細シートで期限設定 → カレンダーに星が表示される
   - 振り返りボタン → 鍵が無ければ「端末内の簡易判定」カードが出る → 承認/辞退を確認
   - 設定 → 書き出し/復元/全削除(2段階確認)
+  - 設定 → 「自動バックアップ」に直近の世代が並ぶ → 「この時点に戻す」で復元(2段階確認)
+  - ⌘K / Ctrl+K またはヘッダーの「検索」→ 目標名・メモ本文・画面名で絞り込み → Enter で移動
+- ロジックの確認:`npm test`(型検査だけなら `npx tsc`)
 - AI 鍵設定後:分裂候補の実生成、Reflection の AI 判定カードを確認
 
 ## 既知の未確認事項

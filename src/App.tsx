@@ -8,6 +8,7 @@ import { CalendarView } from "./CalendarView";
 import { ReflectionView } from "./ReflectionView";
 import { SettingsView } from "./SettingsView";
 import { StartupAnimation, type StartupKind } from "./Startup";
+import { CommandPalette } from "./CommandPalette";
 import { createRootGoal, ensureLoaded, getSettings, selectGoal } from "./store";
 import { useAppState } from "./useAppState";
 
@@ -26,6 +27,7 @@ export function App(): React.JSX.Element {
   const [view, setView] = useState<View>("universe");
   const [newRoot, setNewRoot] = useState("");
   const [startup, setStartup] = useState<StartupKind | null>(null);
+  const [palette, setPalette] = useState(false);
 
   useEffect(() => {
     ensureLoaded();
@@ -40,6 +42,18 @@ export function App(): React.JSX.Element {
       setView((v) => (v === "memo" || v === "calendar" || v === "reflection" ? "universe" : v));
     }
   }, [state.fission?.parentId, state.fission?.phase]);
+
+  // Cmd/Ctrl+K で検索パレットを開閉する(目標が増えた時のジャンプ手段)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const showFirstGoal = state.goals.length === 0 && !state.fission;
   const primaryView = view === "universe" || view === "list";
@@ -56,6 +70,14 @@ export function App(): React.JSX.Element {
           <span className="brand-text">Mind Signature</span>
         </div>
         <div className="topbar-actions">
+          <button
+            className="btn ghost small"
+            aria-label="検索"
+            title="検索 (⌘K / Ctrl+K)"
+            onClick={() => setPalette(true)}
+          >
+            検索
+          </button>
           {view === "list" && (
             <button
               className="btn ghost small"
@@ -151,6 +173,16 @@ export function App(): React.JSX.Element {
             );
           })}
         </nav>
+      )}
+
+      {palette && (
+        <CommandPalette
+          goals={state.goals}
+          memos={state.memos}
+          onClose={() => setPalette(false)}
+          onGoView={(v) => setView(v)}
+          onPickGoal={(id) => selectGoal(id)}
+        />
       )}
 
       {startup && (

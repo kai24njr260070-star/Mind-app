@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { clearAllData, exportData, getSettings, importData, selectProvider, updateSettings } from "./store";
+import { clearAllData, exportData, getSettings, importData, restoreBackupAt, selectProvider, updateSettings } from "./store";
+import { listBackups, MAX_BACKUPS } from "./backup";
 import { useAppState } from "./useAppState";
 import { requestAIStatus } from "./api";
 
@@ -13,6 +14,13 @@ const PROVIDERS: Array<{ id: string; label: string; hint: string; keyHint: strin
 
 type Status = Awaited<ReturnType<typeof requestAIStatus>>;
 
+/** バックアップ一覧の表示用(月/日 時:分)。 */
+function formatAt(at: number): string {
+  const d = new Date(at);
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** 設定画面(spec §9)。テーマ・音・アニメ・AI設定・データ管理を扱う。 */
 export function SettingsView(): React.JSX.Element {
   useAppState();
@@ -20,6 +28,9 @@ export function SettingsView(): React.JSX.Element {
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmRestore, setConfirmRestore] = useState<number | null>(null);
+  // 設定画面を開くたび/状態が変わるたびに最新の一覧を読む(件数は最大5件なので軽い)
+  const backups = listBackups();
   const [aiStatus, setAIStatus] = useState<"idle" | "checking" | "ok" | "failed">("idle");
   const [aiResult, setAIResult] = useState<Status | null>(null);
 
@@ -183,6 +194,40 @@ export function SettingsView(): React.JSX.Element {
           </button>
         </div>
         {msg && <p className="page-note ok">{msg}</p>}
+      </div>
+
+      <div className="page-block">
+        <h3 className="page-subtitle">自動バックアップ(端末内)</h3>
+        <p className="page-note">
+          5分おきに自動で保存し、直近{MAX_BACKUPS}世代を保持します。全削除・読み込み・目標の削除の直前には必ず1世代残すので、
+          誤操作してもここから戻せます。端末外(クラウド)には送信しません。
+        </p>
+        {backups.length === 0 ? (
+          <p className="page-note">まだバックアップはありません。目標やメモを追加すると作成されます。</p>
+        ) : (
+          <ul className="backup-list">
+            {backups.map((b) => (
+              <li key={b.at} className="backup-row">
+                <span className="backup-when">{formatAt(b.at)}</span>
+                <span className="backup-count">目標 {b.goals} / メモ {b.memos}</span>
+                <button
+                  className={`btn ghost small ${confirmRestore === b.at ? "danger confirm" : ""}`}
+                  onClick={() => {
+                    if (confirmRestore !== b.at) {
+                      setConfirmRestore(b.at);
+                      return;
+                    }
+                    const res = restoreBackupAt(b.at);
+                    setConfirmRestore(null);
+                    setMsg(res.ok ? "バックアップから復元しました。" : `復元に失敗しました: ${res.error ?? "不明"}`);
+                  }}
+                >
+                  {confirmRestore === b.at ? "もう一度で復元" : "この時点に戻す"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

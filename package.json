@@ -9,7 +9,9 @@
     "preview": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "sites:build": "npm run build && node scripts/inline-assets.mjs && esbuild worker/index.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=freebuff-sites-build/worker/index.js",
-    "worker:dev": "wrangler dev"
+    "worker:dev": "wrangler dev",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -22,6 +24,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
+    "vitest": "^3.2.7",
     "wrangler": "^4.0.0"
   }
 }
