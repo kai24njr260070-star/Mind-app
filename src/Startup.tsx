@@ -35,7 +35,7 @@ export function StartupAnimation({
     const ctx = canvas.getContext("2d");
     if (!ctx) return finish();
 
-    const FIRST_TOTAL = 3500;
+    const FIRST_TOTAL = 2600;
     const SHORT_TOTAL = 1100;
     const total = kind === "first" ? FIRST_TOTAL : SHORT_TOTAL;
     const start = performance.now();
@@ -95,7 +95,7 @@ export function StartupAnimation({
         for (const s of far) {
           const born = ease((t - s.delay * 0.4) / 700);
           if (born <= 0) continue;
-          ctx.globalAlpha = born * 0.55 * (0.6 + 0.4 * Math.sin(ts * 0.002 * s.s + s.a));
+          ctx.globalAlpha = born * 0.85 * (0.6 + 0.4 * Math.sin(ts * 0.002 * s.s + s.a));
           ctx.fillStyle = "#cfe0ff";
           ctx.beginPath();
           ctx.arc(cx + Math.cos(s.a) * s.r * R * 0.42, cy + Math.sin(s.a) * s.r * R * 0.3, s.s, 0, Math.PI * 2);
@@ -204,7 +204,7 @@ export function StartupAnimation({
       )}
       <div
         className="startup-logo"
-        style={{ animationDelay: kind === "first" ? "2.8s" : "0.35s" }}
+        style={{ animationDelay: kind === "first" ? "0.5s" : "0.15s" }}
         aria-hidden="true"
       >
         <span className="startup-logo-mark">✷</span>

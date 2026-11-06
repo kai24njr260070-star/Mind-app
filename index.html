@@ -8,7 +8,12 @@
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- JSの読み込み中でも真っ黒に見えないようにする表示(Reactのマウントで置き換わる) -->
+      <div style="position: fixed; inset: 0; display: grid; place-items: center; background: #070b18; color: #9fb3d9; font: 600 14px/1.5 system-ui, -apple-system, 'Hiragino Sans', sans-serif;">
+        読み込み中…
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
