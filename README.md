@@ -169,3 +169,11 @@ npm run sites:build    # build → worker を esbuild でバンドル → assets
 
 生成物は `freebuff-sites-build/worker/index.js`(ESMバンドル)と `freebuff-sites-build/assets/`(dist の中身)です。これを `freebuff-sites-build/manifest.json` で指定してデプロイします。
 
+
+### ビルド済みファイルをそのまま配信する場合(Cloudflare Pages / Git連携)
+
+`npm run sites:build` を実行すると、JSとCSSをHTMLに埋め込んだ**単一ファイル**が `public-deploy/index.html` に生成されます(外部アセット参照ゼロ)。
+
+- Cloudflare のビルド設定: ビルドコマンド `npm run sites:build` / 出力ディレクトリ `public-deploy`
+- ビルドを行わない静的配信でも、`public-deploy` を配信ディレクトリに指定すればそのまま動きます
+- リポジトリ直下の `index.html` は Vite の**開発用エントリ**(`/src/main.tsx` を読み込む)です。これをそのまま静的配信すると、ブラウザはTypeScriptを実行できないため**画面が起動せず「読み込み中…」のまま**になります

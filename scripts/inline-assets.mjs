@@ -57,5 +57,12 @@ rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 writeFileSync(resolve(outDir, "index.html"), html, "utf8");
 
+// Cloudflare等で「リポジトリの中身をそのまま配信」する構成でも起動できるよう、
+// ビルド済み単一HTMLを public-deploy/ に同梱する(ここを配信ディレクトリに指定する)。
+const deployDir = resolve(root, "public-deploy");
+mkdirSync(deployDir, { recursive: true });
+writeFileSync(resolve(deployDir, "index.html"), html, "utf8");
+
 const kb = (html.length / 1024).toFixed(1);
 console.log(`single-file build: ${outDir}/index.html  ${kb} KiB (css:${inlinedCss} js:${inlinedJs})`);
+console.log(`deployable copy : ${deployDir}/index.html`);
