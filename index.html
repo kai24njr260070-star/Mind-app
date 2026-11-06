@@ -10,10 +10,67 @@
   <body>
     <div id="root">
       <!-- JSの読み込み中でも真っ黒に見えないようにする表示(Reactのマウントで置き換わる) -->
-      <div style="position: fixed; inset: 0; display: grid; place-items: center; background: #070b18; color: #9fb3d9; font: 600 14px/1.5 system-ui, -apple-system, 'Hiragino Sans', sans-serif;">
+      <div
+        id="boot-fallback"
+        style="position: fixed; inset: 0; display: grid; place-items: center; background: #070b18; color: #9fb3d9; font: 600 14px/1.6 system-ui, -apple-system, 'Hiragino Sans', sans-serif;"
+      >
         読み込み中…
       </div>
     </div>
+    <noscript>
+      <div style="position: fixed; inset: 0; display: grid; place-items: center; background: #070b18; color: #9fb3d9; font: 600 14px/1.6 system-ui, sans-serif; text-align: center; padding: 24px;">
+        JavaScriptが無効になっています。有効にするとMind Signatureを使えます。
+      </div>
+    </noscript>
+
+    <!--
+      JSが読み込めない/実行時に落ちた場合、いつまでも「読み込み中…」や真っ黒のままにせず、
+      理由と再読み込みボタンを出す。Reactがマウントすると #boot-fallback は消えるので、
+      ここでの表示は「マウントできなかったとき」だけになる。
+    -->
+    <script>
+      (function () {
+        function bootFailed(detail) {
+          var el = document.getElementById("boot-fallback");
+          if (!el) return; // すでにReactがマウント済み
+          el.innerHTML =
+            '<div style="text-align:center;max-width:24em;padding:0 20px">' +
+            '<div style="font-size:15px;margin-bottom:10px">アプリを読み込めませんでした。</div>' +
+            '<div style="font-size:12px;font-weight:400;opacity:.75;margin-bottom:16px;word-break:break-all">' +
+            (detail || "通信が遮断されているか、スクリプトが実行できていません。") +
+            "</div>" +
+            '<button type="button" onclick="location.reload()" style="border:1px solid rgba(120,160,220,.45);background:rgba(16,22,44,.9);color:#cfe0ff;border-radius:10px;padding:10px 18px;font:600 13px system-ui,sans-serif;cursor:pointer">' +
+            "再読み込み" +
+            "</button>" +
+            "</div>";
+        }
+
+        // スクリプト/CSSの読み込み失敗はここに入る(capture必須)
+        window.addEventListener(
+          "error",
+          function (e) {
+            var t = e && e.target;
+            if (t && t.tagName === "SCRIPT") {
+              bootFailed("スクリプトを取得できません: " + (t.src || ""));
+            } else if (t && t.tagName === "LINK") {
+              bootFailed("スタイルを取得できません: " + (t.href || ""));
+            } else if (e && e.message) {
+              bootFailed("エラー: " + e.message);
+            }
+          },
+          true
+        );
+        window.addEventListener("unhandledrejection", function (e) {
+          bootFailed("エラー: " + String((e && e.reason) || "unknown"));
+        });
+
+        // 起動が極端に遅い/止まった場合の保険
+        window.setTimeout(function () {
+          bootFailed("");
+        }, 10000);
+      })();
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
