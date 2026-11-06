@@ -102,6 +102,8 @@ export interface Settings {
   providerId: string;
   /** モデル指定(空ならサーバー側で自動選択) */
   aiModel: string;
+  /** プロバイダごとのAPIキー/モデル。プロバイダを切り替えても消えないよう保存する。 */
+  perProvider?: Record<string, { apiKey: string; aiModel: string }>;
 }
 
 export interface AppState {

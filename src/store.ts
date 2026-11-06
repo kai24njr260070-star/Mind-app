@@ -14,7 +14,14 @@ let state: AppState = {
   fx: null,
 };
 
-export let settings: Settings = { skipStartup: false, sound: false, apiKey: "", providerId: "freebuff", aiModel: "" };
+export let settings: Settings = {
+  skipStartup: false,
+  sound: false,
+  apiKey: "",
+  providerId: "freebuff",
+  aiModel: "",
+  perProvider: {},
+};
 
 let loaded = false;
 
@@ -41,7 +48,13 @@ function loadPersisted(): void {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<Settings>;
-      settings = { ...settings, ...parsed };
+      const merged: Settings = { ...settings, ...parsed };
+      // 旧形式(キーが1枠しかない時代)からの移行: 現在のプロバイダの値をプロバイダ別の保存領域へ写す
+      const perProvider = { ...(merged.perProvider ?? {}) };
+      if (!perProvider[merged.providerId] && (merged.apiKey || merged.aiModel)) {
+        perProvider[merged.providerId] = { apiKey: merged.apiKey, aiModel: merged.aiModel };
+      }
+      settings = { ...merged, perProvider };
     }
   } catch {
     // 設定が壊れていても既定値で続行
@@ -110,6 +123,14 @@ export function getSettings(): Settings {
 
 export function updateSettings(next: Partial<Settings>): void {
   settings = { ...settings, ...next };
+  // 選択中のプロバイダのキー/モデルも同時に保存し、切り替えても失われないようにする
+  settings = {
+    ...settings,
+    perProvider: {
+      ...settings.perProvider,
+      [settings.providerId]: { apiKey: settings.apiKey, aiModel: settings.aiModel },
+    },
+  };
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch {
@@ -117,6 +138,15 @@ export function updateSettings(next: Partial<Settings>): void {
   }
   // 設定をUIに反映させる(状態オブジェクトの参照を新しくする)
   setState({});
+}
+
+/**
+ * プロバイダを切り替える。現在のキー/モデルは保存済みなので、
+ * 切り替え先に保存されているキー/モデルを復元する(未保存なら空欄)。
+ */
+export function selectProvider(providerId: string): void {
+  const saved = settings.perProvider?.[providerId];
+  updateSettings({ providerId, apiKey: saved?.apiKey ?? "", aiModel: saved?.aiModel ?? "" });
 }
 
 function uid(prefix: string): string {

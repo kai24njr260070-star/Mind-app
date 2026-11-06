@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { clearAllData, exportData, getSettings, importData, updateSettings } from "./store";
+import { clearAllData, exportData, getSettings, importData, selectProvider, updateSettings } from "./store";
 import { useAppState } from "./useAppState";
 import { requestAIStatus } from "./api";
 
@@ -79,7 +79,7 @@ export function SettingsView(): React.JSX.Element {
           <span>プロバイダ</span>
           <select
             value={s.providerId}
-            onChange={(e) => updateSettings({ providerId: e.target.value })}
+            onChange={(e) => selectProvider(e.target.value)}
           >
             {PROVIDERS.map((p) => (
               <option key={p.id} value={p.id}>{p.label}</option>
@@ -138,6 +138,11 @@ export function SettingsView(): React.JSX.Element {
             </span>
           )}
         </div>
+
+        <p className="page-note">
+          プロバイダ・APIキー・モデルはこの端末(localStorage)に保存され、次回起動時も復元されます。
+          キーはプロバイダごとに個別保存されるので、切り替えても上書きされません。
+        </p>
 
         <p className="page-note">
           {aiResult?.envConfigured || s.apiKey
