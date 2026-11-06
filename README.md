@@ -176,4 +176,5 @@ npm run sites:build    # build → worker を esbuild でバンドル → assets
 
 - Cloudflare のビルド設定: ビルドコマンド `npm run sites:build` / 出力ディレクトリ `public-deploy`
 - ビルドを行わない静的配信でも、`public-deploy` を配信ディレクトリに指定すればそのまま動きます
-- リポジトリ直下の `index.html` は Vite の**開発用エントリ**(`/src/main.tsx` を読み込む)です。これをそのまま静的配信すると、ブラウザはTypeScriptを実行できないため**画面が起動せず「読み込み中…」のまま**になります
+- リポジトリ直下の `index.html` は**ビルド済み単一ファイル**です(Cloudflare Pages が出力ディレクトリ指定なしでそのまま配信しても起動する形)。Vite の開発用エントリは `app.html` に分けてあり、`npm run dev` では `/app.html` が開きます
+- ソースを変更したら `npm run sites:build` を実行し、`index.html` と `public-deploy/index.html` を作り直してからコミットしてください(`index.html` は生成物です)

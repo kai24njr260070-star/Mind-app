@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 const root = process.cwd();
 const distDir = resolve(root, "dist");
 const outDir = resolve(root, "freebuff-sites-build/single");
-const htmlPath = resolve(distDir, "index.html");
+const htmlPath = resolve(distDir, "app.html");
 
 let html = readFileSync(htmlPath, "utf8");
 const readAsset = (ref) => {
@@ -63,6 +63,11 @@ const deployDir = resolve(root, "public-deploy");
 mkdirSync(deployDir, { recursive: true });
 writeFileSync(resolve(deployDir, "index.html"), html, "utf8");
 
+// リポジトリ直下の index.html もビルド済み単一ファイルで置き換える。
+// Cloudflare Pages などが「リポジトリをそのまま配信」する構成でも起動できるようにするため。
+writeFileSync(resolve(root, "index.html"), html, "utf8");
+
 const kb = (html.length / 1024).toFixed(1);
 console.log(`single-file build: ${outDir}/index.html  ${kb} KiB (css:${inlinedCss} js:${inlinedJs})`);
 console.log(`deployable copy : ${deployDir}/index.html`);
+console.log(`repo root       : ${resolve(root, "index.html")}`);
