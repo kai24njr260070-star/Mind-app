@@ -308,18 +308,22 @@ input[type="text"]:focus {
   border-top: 1px solid var(--line);
   border-radius: 18px 18px 0 0;
   padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 84px);
-  animation: sheet-up 0.22s ease;
+  animation: sheet-pop 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
   max-height: 60%;
   overflow-y: auto;
 }
 
-@keyframes sheet-up {
+@keyframes sheet-pop {
   from {
-    transform: translateY(18px);
-    opacity: 0.4;
+    transform: translateY(18px) scale(0.97);
+    opacity: 0.35;
+  }
+  70% {
+    transform: translateY(0) scale(1.008);
+    opacity: 1;
   }
   to {
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
     opacity: 1;
   }
 }
@@ -949,7 +953,16 @@ input[type="checkbox"] {
 @media (prefers-reduced-motion: reduce) {
   .startup-logo,
   .sheet,
-  .startup {
+  .startup,
+  .list-row,
+  .cand-row,
+  .view-fx,
+  .app.ui-ready .topbar,
+  .app.ui-ready .bottomnav,
+  .app.ui-ready .reflection-banner,
+  .app.ui-ready .universe-canvas,
+  .app.ui-ready .list-view,
+  .app.ui-ready .first-goal {
     animation: none !important;
     transition-duration: 0.01s !important;
   }
@@ -1045,6 +1058,92 @@ input[type="checkbox"] {
   padding: 14px;
   font-size: 13px;
   color: var(--text-dim);
+}
+
+/* ---------- motion: 起動後のUI定着 / 目標の「ピョコッ」 / 画面切替 ---------- */
+@keyframes ui-settle-down {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ui-settle-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ui-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 目標が現れるときの「ピョコッ」(少し行き過ぎてから収まる) */
+@keyframes goal-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.72) translateY(6px);
+  }
+  58% {
+    opacity: 1;
+    transform: scale(1.08) translateY(-3px);
+  }
+  80% {
+    transform: scale(0.98) translateY(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 起動演出が終わった直後、UIがひとつの流れで定着する */
+.app.ui-ready .topbar {
+  animation: ui-settle-down 220ms ease-out both;
+}
+
+.app.ui-ready .bottomnav {
+  animation: ui-settle-up 240ms cubic-bezier(0.2, 0.9, 0.3, 1) 120ms both;
+}
+
+.app.ui-ready .reflection-banner {
+  animation: ui-settle-down 220ms ease-out 160ms both;
+}
+
+.app.ui-ready .universe-canvas,
+.app.ui-ready .list-view {
+  animation: ui-fade 380ms ease-out both;
+}
+
+.app.ui-ready .first-goal {
+  animation: goal-pop 380ms cubic-bezier(0.2, 0.9, 0.3, 1) 70ms both;
+}
+
+/* 目標の行・AI候補は1件ずつピョコッと現れる(順番はインラインのanimationDelay) */
+.list-row,
+.cand-row {
+  animation: goal-pop 340ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+/* 画面切替(宇宙以外)の短いクロスフェード */
+.view-fx {
+  position: absolute;
+  inset: 0;
+  animation: ui-fade 170ms ease-out both;
 }
 
 /* ---------- auto backup list ---------- */

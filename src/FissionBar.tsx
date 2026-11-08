@@ -78,7 +78,12 @@ export function FissionBar(): React.JSX.Element {
           {canConfirmAI && (
             <div className="cand-rows">
               {fission.candidates.map((c, i) => (
-                <button key={c.id} className="cand-row" onClick={() => chooseSingle(c, c.id)}>
+                <button
+                  key={c.id}
+                  className="cand-row"
+                  style={{ animationDelay: `${i * 70}ms` }}
+                  onClick={() => chooseSingle(c, c.id)}
+                >
                   <span className="cand-badge">{String.fromCharCode(65 + i)}</span>
                   <span className="cand-text">
                     <span className="cand-title">{c.title}</span>

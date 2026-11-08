@@ -28,12 +28,16 @@ export function App(): React.JSX.Element {
   const [newRoot, setNewRoot] = useState("");
   const [startup, setStartup] = useState<StartupKind | null>(null);
   const [palette, setPalette] = useState(false);
+  // 起動演出が終わってからUIを「定着」させる(クラス付与でアニメーション開始)
+  const [uiReady, setUiReady] = useState(false);
 
   useEffect(() => {
     ensureLoaded();
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const { skipStartup } = getSettings();
     setStartup(skipStartup || reduced ? "short" : "first");
+    // スキップ/動きを減らす設定では待たせず、すぐ定着させる
+    if (skipStartup || reduced) setUiReady(true);
   }, []);
 
   // 分裂が始まったら宇宙へ返す(メモ→目標化、Reflection→承認して分裂 など)
@@ -59,7 +63,7 @@ export function App(): React.JSX.Element {
   const primaryView = view === "universe" || view === "list";
 
   return (
-    <div className="app">
+    <div className={`app ${uiReady ? "ui-ready" : ""}`}>
       {view === "universe" || view === "list" ? (
         view === "universe" ? <UniverseView /> : <ListView goals={state.goals} />
       ) : null}
@@ -118,10 +122,14 @@ export function App(): React.JSX.Element {
         </button>
       )}
 
-      {view === "memo" && <MemoView />}
-      {view === "calendar" && <CalendarView />}
-      {view === "reflection" && <ReflectionView />}
-      {view === "settings" && <SettingsView />}
+      {!primaryView && (
+        <div className="view-fx" key={view}>
+          {view === "memo" && <MemoView />}
+          {view === "calendar" && <CalendarView />}
+          {view === "reflection" && <ReflectionView />}
+          {view === "settings" && <SettingsView />}
+        </div>
+      )}
 
       {view === "universe" && showFirstGoal && (
         <div className="first-goal">
@@ -186,7 +194,13 @@ export function App(): React.JSX.Element {
       )}
 
       {startup && (
-        <StartupAnimation kind={startup} onDone={() => setStartup(null)} />
+        <StartupAnimation
+          kind={startup}
+          onDone={() => {
+            setStartup(null);
+            setUiReady(true);
+          }}
+        />
       )}
     </div>
   );

@@ -39,11 +39,15 @@ export function ListView({ goals }: Props): React.JSX.Element {
   return (
     <div className="list-view">
       {rows.length === 0 && <p className="list-empty">目標はまだありません。</p>}
-      {rows.map(({ goal, depth }) => (
+      {rows.map(({ goal, depth }, index) => (
         <button
           key={goal.id}
           className={`list-row ${goal.status === "completed" ? "done" : ""}`}
-          style={{ paddingLeft: `${12 + depth * 18}px` }}
+          style={{
+            paddingLeft: `${12 + depth * 18}px`,
+            // 上から順に「ピョコッ」と現れる
+            animationDelay: `${Math.min(index, 10) * 28}ms`,
+          }}
           onClick={() => selectGoal(goal.id)}
         >
           <span

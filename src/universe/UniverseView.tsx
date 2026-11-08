@@ -3,6 +3,7 @@ import type { FissionCandidateLive, Goal } from "../types";
 import { confirmFission, selectGoal } from "../store";
 import { useAppState } from "../useAppState";
 import { computeLayout, fissionCandidatePositions, type LayoutNode } from "./layout";
+import { easeOutBack } from "../motion";
 
 interface Cam {
   x: number;
@@ -295,9 +296,9 @@ export function UniverseView(): React.JSX.Element {
         const ds = depthStyle(node.depth);
         const isDone = node.goal.status === "completed";
         const rWorld = starRadius(node.depth) * (isDone ? 0.85 : 1);
-        // 生成直後はふわっと浮かび上がる(createdAtはエポックmsでts(経過ms)と混ぜない)
+        // 生成直後は「ピョコッ」と少し行き過ぎてから収まる(createdAtはエポックmsでts(経過ms)と混ぜない)
         const age = Date.now() - node.goal.createdAt;
-        const born = age < 900 ? 0.2 + 0.8 * Math.min(1, age / 900) : 1;
+        const born = age < 900 ? 0.2 + 0.8 * easeOutBack(Math.min(1, age / 900)) : 1;
         nodeList.push({ id: node.goal.id, x: node.x, y: node.y, r: rWorld });
         const sx = toScreenX(node.x);
         const sy = toScreenY(node.y);
