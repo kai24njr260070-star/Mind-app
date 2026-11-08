@@ -77,7 +77,10 @@ npx wrangler dev   # http://localhost:8787 で Worker+静的配信
 
 モデルは既定で自動選択(軽量モデルを優先)。Groq なら `llama-3.3-70b-versatile`、Gemini なら `gemini-2.5-flash`、Grok なら `grok-3-mini` などが必要に応じたフォールバックになります。明示指定もできます。
 
-**方法2: Worker環境変数** — `.env` に `OPENAI_API_KEY=...`(Freebuffのキー)または `GROQ_API_KEY=...`(Groqのキー)を書き、`wrangler dev` を再起動。設定画面でキーを未入力のままプロバイダを選ぶと、対応する環境変数キーへフォールバックします(base URLの設定は不要)。設定画面にキーが入力されている場合はそちらを優先します。
+**方法2: Worker環境変数** — `.env` に `OPENAI_API_KEY=...`(Freebuff/OpenAIのキー)、`GROQ_API_KEY=...`(Groq)、`GEMINI_API_KEY=...`(Gemini)、`XAI_API_KEY=...`(Grok)を書き、`wrangler dev` を再起動。設定画面でキーを未入力のままプロバイダを選ぶと、対応する環境変数キーへフォールバックします(base URLの設定は不要)。設定画面にキーが入力されている場合はそちらを優先します。
+
+**Cloudflare Pages(静的配信)で使う場合** — そのホストには `/api/ai/*` が無いため、アプリは自動で「ブラウザ直結」に切り替えます(設定画面で入れたキーで `api.groq.com` などを直接呼ぶ)。Groq / Gemini はCORSを許可しているのでそのまま動きます。Worker付きで配信している場合(Sites など)は従来どおりサーバー経由です。
+キーを全端末で共有したい場合は、Worker版の Secrets に `GROQ_API_KEY` 等を入れてください。
 
 鍵が無い/失敗した場合、UI は明示的なエラーカードを出し **手動入力で作業を続けられる**(仕様書 §13 の品質要件)。AI が生成に失敗しても中核体験は止まらない設計。
 

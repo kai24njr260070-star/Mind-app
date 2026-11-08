@@ -1,8 +1,26 @@
 import type { AICandidate, FissionError } from "./types";
+import { browserAIConfig, directFission, directReflection, directStatus } from "./directAi";
 
 export class FissionApiError extends Error {
   constructor(public kind: FissionError) {
     super(`fission api error: ${kind}`);
+  }
+}
+
+/** /api が無い静的ホスティング(Cloudflare Pages 直配信など)か。 */
+function notWorkerApi(res: Response): boolean {
+  const type = res.headers.get("content-type") ?? "";
+  return res.status === 404 || res.status === 405 || !type.includes("application/json");
+}
+
+/** Workerが使えないとき、この端末のキーでプロバイダへ直接つなぐ。 */
+async function viaDirect<T>(run: () => Promise<T>): Promise<T> {
+  if (!browserAIConfig()) throw new FissionApiError("not_configured");
+  try {
+    return await run();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    throw new FissionApiError(msg === "cors_or_network" ? "network" : "ai_failed");
   }
 }
 
@@ -39,7 +57,10 @@ export async function requestFissionCandidates(payload: {
       body: JSON.stringify(payload),
     });
   } catch {
-    throw new FissionApiError("network");
+    return viaDirect(() => directFission(payload));
+  }
+  if (notWorkerApi(res) || res.status === 503) {
+    return viaDirect(() => directFission(payload));
   }
   if (!res.ok) {
     let kind: FissionError = "ai_failed";
@@ -93,7 +114,10 @@ export async function requestReflection(payload: {
       body: JSON.stringify(payload),
     });
   } catch {
-    throw new FissionApiError("network");
+    return viaDirect(() => directReflection(payload));
+  }
+  if (notWorkerApi(res) || res.status === 503) {
+    return viaDirect(() => directReflection(payload));
   }
   if (!res.ok) throw new FissionApiError(res.status === 503 ? "not_configured" : "ai_failed");
   const json = (await res.json()) as {
@@ -123,6 +147,7 @@ export async function requestAIStatus(): Promise<{
 }> {
   try {
     const res = await fetch("/api/ai/status", { headers: jsonHeaders() });
+    if (notWorkerApi(res) && browserAIConfig()) return directStatus();
     if (!res.ok) {
       return { configured: false, ok: false, model: null, error: `status ${res.status}`, envConfigured: false };
     }
@@ -141,6 +166,7 @@ export async function requestAIStatus(): Promise<{
       envConfigured: json.envConfigured === true,
     };
   } catch {
+    if (browserAIConfig()) return directStatus();
     return { configured: false, ok: false, model: null, error: "network", envConfigured: false };
   }
 }

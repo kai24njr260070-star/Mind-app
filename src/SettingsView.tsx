@@ -82,8 +82,8 @@ export function SettingsView(): React.JSX.Element {
       <div className="page-block">
         <h3 className="page-subtitle">AI</h3>
         <p className="page-note">
-          分裂候補・振り返りの生成はサーバー側(Worker)で行われ、入力したキーがブラウザ以外で保存されたり、
-          画面に誤って表示されることはありません。OpenAI互換(chat/completions)のプロバイダを選べます。
+          分裂候補・振り返りの生成は、Workerがあればそちら経由(/api/ai/*)で、Cloudflare Pages のような静的配信では
+          この端末のキーでプロバイダへ直接行われます。キーは画面に表示されません。OpenAI互換(chat/completions)のプロバイダを選べます。
         </p>
 
         <label className="setting-row">
@@ -157,7 +157,7 @@ export function SettingsView(): React.JSX.Element {
 
         <p className="page-note">
           {aiResult?.envConfigured || s.apiKey
-            ? "キーが設定されています(Freebuff既定ではWorkerの環境変数キーを優先)。"
+            ? "キーが設定されています(Worker版では環境変数キーの方が優先)。"
             : "キー未設定でも、手動分裂と端末内の簡易振り返り判定で機能は継続します。"}
         </p>
       </div>
