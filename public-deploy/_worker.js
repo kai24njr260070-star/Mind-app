@@ -123,6 +123,47 @@ function parseCandidates(content) {
     description: String(c.description ?? "").trim()
   })).filter((c) => c.title.length > 0).slice(0, 2);
 }
+var IDEA_SYSTEM_PROMPT = `\u3042\u306A\u305F\u306F Mind Signature \u306E\u300C\u76EE\u6A19\u3065\u304F\u308A\u306E\u30D2\u30F3\u30C8\u300D\u30A2\u30B7\u30B9\u30BF\u30F3\u30C8\u3067\u3059\u3002
+\u30E6\u30FC\u30B6\u30FC\u304C\u81EA\u5206\u306E\u76EE\u6A19\u3092\u7ACB\u3066\u3084\u3059\u304F\u306A\u308B\u3088\u3046\u3001\u5177\u4F53\u7684\u306A\u76EE\u6A19\u306E\u4F8B\u3092\u63D0\u6848\u3057\u307E\u3059\u3002
+
+\u30EB\u30FC\u30EB:
+- \u4ED6\u306E\u5229\u7528\u8005\u306E\u30C7\u30FC\u30BF\u3084\u5B9F\u7E3E\u306B\u306F\u8A00\u53CA\u3057\u306A\u3044(\u300C\u4ED6\u306E\u4EBA\u306F\u300D\u300C\u307F\u3093\u306A\u306F\u300D\u3068\u66F8\u304B\u306A\u3044)\u3002\u3042\u304F\u307E\u3067\u4E00\u822C\u7684\u306A\u4F8B\u3068\u3057\u3066\u51FA\u3059\u3002
+- 5\u3064\u3002\u5206\u91CE\u3092\u3070\u3089\u3059(\u5B66\u3073\u30FB\u5065\u5EB7\u30FB\u4ED5\u4E8B\u30FB\u8DA3\u5473\u30FB\u4EBA\u9593\u95A2\u4FC2\u306A\u3069)\u3002
+- title \u306F25\u6587\u5B57\u4EE5\u5185\u3067\u3001\u884C\u52D5\u3068\u5206\u91CF\u304C\u5206\u304B\u308B\u5177\u4F53\u7684\u306A\u5F62\u306B\u3059\u308B(\u4F8B:\u300C\u6BCE\u671D10\u5206\u3001\u82F1\u8A9E\u306E\u97F3\u8AAD\u3092\u3059\u308B\u300D)\u3002
+- \u671F\u9650\u3084\u6570\u5024\u3092\u5165\u308C\u3089\u308C\u308B\u3082\u306E\u306F\u5165\u308C\u308B\u3002\u30E6\u30FC\u30B6\u30FC\u306E\u500B\u4EBA\u60C5\u5831\u3092\u52DD\u624B\u306B\u6C7A\u3081\u3064\u3051\u306A\u3044\u3002
+- why \u306F\u300C\u306A\u305C\u7ACB\u3066\u3084\u3059\u3044\u304B\u300D\u3092\u65E5\u672C\u8A9E35\u6587\u5B57\u4EE5\u5185\u3067\u3002
+- \u51FA\u529B\u306FJSON\u306E\u307F\u3002\u5F62\u5F0F: {"ideas":[{"title":"...","why":"..."}]}`;
+function ideaContextLines(payload) {
+  const goals = (payload.goals ?? []).filter((g) => typeof g === "string" && g.trim()).slice(0, 10);
+  return [
+    payload.context === "onboarding" ? "\u5834\u9762: \u6700\u521D\u306E\u76EE\u6A19\u3092\u3053\u308C\u304B\u3089\u6C7A\u3081\u308B" : "\u5834\u9762: \u76EE\u6A19\u306E\u661F\u3092\u898B\u3066\u3044\u308B\u9014\u4E2D",
+    goals.length > 0 ? `\u65E2\u306B\u3042\u308B\u76EE\u6A19(\u91CD\u8907\u3092\u907F\u3051\u308B): ${goals.join(" / ")}` : ""
+  ].filter(Boolean).join("\n");
+}
+function ideaRequestBody(model, payload) {
+  return {
+    model,
+    temperature: 0.9,
+    max_tokens: 500,
+    messages: [
+      { role: "system", content: IDEA_SYSTEM_PROMPT },
+      { role: "user", content: ideaContextLines(payload) }
+    ]
+  };
+}
+function parseIdeas(content) {
+  const start = content.indexOf("{");
+  const end = content.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("no json");
+  const parsed = JSON.parse(content.slice(start, end + 1));
+  const raw = Array.isArray(parsed.ideas) ? parsed.ideas : Array.isArray(parsed.hints) ? parsed.hints : Array.isArray(parsed.examples) ? parsed.examples : [];
+  const ideas = raw.filter((i) => typeof i === "object" && i !== null).map((i) => ({
+    title: String(i.title ?? i.goal ?? "").trim(),
+    why: String(i.why ?? i.reason ?? "").trim()
+  })).filter((i) => i.title.length > 0).slice(0, 6);
+  if (ideas.length === 0) throw new Error("no ideas");
+  return ideas;
+}
 var MUSIC_SYSTEM_PROMPT = `\u3042\u306A\u305F\u306F Mind Signature \u306E\u300C\u97F3\u697D\u63D0\u6848\u300D\u30A2\u30B7\u30B9\u30BF\u30F3\u30C8\u3067\u3059\u3002
 \u30E6\u30FC\u30B6\u30FC\u304C\u3053\u308C\u304B\u3089\u5B9F\u884C\u3059\u308B\u4E88\u5B9A(\u76EE\u6A19\u3068\u6642\u9593\u5E2F)\u306B\u5408\u3046\u66F2\u3092\u3001Apple Music \u3067\u63A2\u305B\u308B\u5F62\u3067\u63D0\u6848\u3057\u307E\u3059\u3002
 
@@ -367,6 +408,37 @@ async function handleReflection(request, env) {
   }
   return Response.json({ error: "ai_failed", detail }, { status: 502 });
 }
+async function handleIdeas(request, env) {
+  const cfg = requestAIConfig(request, env);
+  if (!cfg.key || !cfg.baseUrl) {
+    return Response.json({ error: "not_configured" }, { status: 503 });
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const models = await resolveModels(cfg);
+  if (models.length === 0) {
+    return Response.json({ error: "ai_failed", detail: "\u30E2\u30C7\u30EB\u3092\u6C7A\u5B9A\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F" }, { status: 502 });
+  }
+  let detail = "";
+  for (const model of models) {
+    const result = await chatCompletion(cfg, ideaRequestBody(model, body));
+    if (!result.ok) {
+      detail = `${model} \u2192 ${result.detail}`;
+      if (shouldRetryWithNextModel(result.status)) continue;
+      break;
+    }
+    try {
+      return Response.json({ ideas: parseIdeas(result.content) });
+    } catch {
+      detail = `${model} \u2192 \u4F8B\u3092\u89E3\u6790\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F`;
+    }
+  }
+  return Response.json({ error: "ai_failed", detail }, { status: 502 });
+}
 async function handleMusic(request, env) {
   const cfg = requestAIConfig(request, env);
   if (!cfg.key || !cfg.baseUrl) {
@@ -449,6 +521,9 @@ var index_default = {
       }
       if (url.pathname === "/api/ai/music" && request.method === "POST") {
         return await handleMusic(request, env);
+      }
+      if (url.pathname === "/api/ai/ideas" && request.method === "POST") {
+        return await handleIdeas(request, env);
       }
       return Response.json({ error: "not_found" }, { status: 404 });
     }

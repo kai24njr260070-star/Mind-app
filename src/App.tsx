@@ -10,6 +10,7 @@ import { SettingsView } from "./SettingsView";
 import { StartupAnimation, type StartupKind } from "./Startup";
 import { CommandPalette } from "./CommandPalette";
 import { ReminderHost } from "./ReminderHost";
+import { GoalExamples, IdeaHintLayer } from "./IdeaHintLayer";
 import { createRootGoal, ensureLoaded, getSettings, selectGoal } from "./store";
 import { useAppState } from "./useAppState";
 
@@ -157,6 +158,7 @@ export function App(): React.JSX.Element {
               宇宙をはじめる
             </button>
           </div>
+          <GoalExamples onPick={(title) => setNewRoot(title)} />
         </div>
       )}
 
@@ -193,6 +195,12 @@ export function App(): React.JSX.Element {
           onPickGoal={(id) => selectGoal(id)}
         />
       )}
+
+      <IdeaHintLayer
+        active={view === "universe" && !state.fission}
+        hasGoals={state.goals.length > 0}
+        goalTitles={state.goals.map((g) => g.title)}
+      />
 
       <ReminderHost />
 

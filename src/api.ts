@@ -1,6 +1,6 @@
-import type { AICandidate, FissionError, MusicTrack } from "./types";
-import { directFission, directMusic, directReflection, directStatus } from "./directAi";
-import type { MusicRequestPayload } from "./aiShared";
+import type { AICandidate, FissionError, GoalIdea, MusicTrack } from "./types";
+import { directFission, directIdeas, directMusic, directReflection, directStatus } from "./directAi";
+import type { IdeaRequestPayload, MusicRequestPayload } from "./aiShared";
 
 export class FissionApiError extends Error {
   constructor(public kind: FissionError, public detail?: string) {
@@ -148,6 +148,32 @@ export async function requestReflection(payload: {
       days: typeof a.days === "number" && Number.isFinite(a.days) ? a.days : undefined,
     }));
   return { summary: String(json.summary ?? "").trim(), actions };
+}
+
+/** 目標づくりのヒント(AI生成)。他の利用者のデータは送らない。 */
+export async function requestIdeaHints(payload: IdeaRequestPayload): Promise<GoalIdea[]> {
+  let res: Response;
+  try {
+    res = await fetch("/api/ai/ideas", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    return viaDirect(() => directIdeas(payload));
+  }
+  if (notWorkerApi(res)) return viaDirect(() => directIdeas(payload));
+  if (!res.ok) throw await workerError(res);
+  const json = (await res.json()) as {
+    ideas?: Array<{ title?: unknown; why?: unknown }>;
+  };
+  const ideas = (json.ideas ?? [])
+    .filter((i) => typeof i?.title === "string")
+    .map((i) => ({ title: String(i.title ?? "").trim(), why: String(i.why ?? "").trim() }))
+    .filter((i) => i.title.length > 0)
+    .slice(0, 6);
+  if (ideas.length === 0) throw new FissionApiError("ai_failed", "例を取得できませんでした");
+  return ideas;
 }
 
 /**

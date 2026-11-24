@@ -4,13 +4,16 @@ import {
   PROVIDER_BASES,
   PROVIDER_FALLBACK_MODELS,
   fissionRequestBody,
+  ideaRequestBody,
   musicRequestBody,
   parseCandidates,
+  parseIdeas,
   parseMusic,
   parseReflection,
   pickChatModel,
   reflectionRequestBody,
   type FissionRequestPayload,
+  type IdeaRequestPayload,
   type MusicRequestPayload,
   type ReflectionRequestPayload,
 } from "../src/aiShared";
@@ -262,6 +265,45 @@ async function handleReflection(request: Request, env: Env): Promise<Response> {
 }
 
 /**
+ * 目標づくりのヒント。他の利用者のデータは使わず、AIに一般的な例を作らせる。
+ */
+async function handleIdeas(request: Request, env: Env): Promise<Response> {
+  const cfg = requestAIConfig(request, env);
+  if (!cfg.key || !cfg.baseUrl) {
+    return Response.json({ error: "not_configured" }, { status: 503 });
+  }
+
+  let body: IdeaRequestPayload;
+  try {
+    body = (await request.json()) as IdeaRequestPayload;
+  } catch {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+
+  const models = await resolveModels(cfg);
+  if (models.length === 0) {
+    return Response.json({ error: "ai_failed", detail: "モデルを決定できませんでした" }, { status: 502 });
+  }
+
+  let detail = "";
+  for (const model of models) {
+    const result = await chatCompletion(cfg, ideaRequestBody(model, body));
+    if (!result.ok) {
+      detail = `${model} → ${result.detail}`;
+      if (shouldRetryWithNextModel(result.status)) continue;
+      break;
+    }
+    try {
+      return Response.json({ ideas: parseIdeas(result.content) });
+    } catch {
+      detail = `${model} → 例を解析できませんでした`;
+    }
+  }
+
+  return Response.json({ error: "ai_failed", detail }, { status: 502 });
+}
+
+/**
  * 予定に合わせた音楽の提案。Apple Music の検索リンクで開く(曲の再生はしない)。
  */
 async function handleMusic(request: Request, env: Env): Promise<Response> {
@@ -362,6 +404,9 @@ export default {
       }
       if (url.pathname === "/api/ai/music" && request.method === "POST") {
         return await handleMusic(request, env);
+      }
+      if (url.pathname === "/api/ai/ideas" && request.method === "POST") {
+        return await handleIdeas(request, env);
       }
       return Response.json({ error: "not_found" }, { status: 404 });
     }

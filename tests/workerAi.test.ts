@@ -111,6 +111,41 @@ describe("WorkerのAI生成", () => {
     expect(body.detail).not.toContain("gsk_secret_value");
   });
 
+  it("目標づくりのヒントを返す", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/models")) return jsonResponse({ data: [{ id: "llama-3.3-70b-versatile" }] });
+        return jsonResponse({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  ideas: [{ title: "毎朝10分、英語の音読をする", why: "小さく続けられる" }],
+                }),
+              },
+            },
+          ],
+        });
+      })
+    );
+
+    const req = new Request("https://example.com/api/ai/ideas", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-ai-provider": "groq",
+        "x-ai-key": "gsk_key_ideas",
+      },
+      body: JSON.stringify({ context: "onboarding" }),
+    });
+    const res = await worker.fetch(req, env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ideas: Array<{ title: string }> };
+    expect(body.ideas[0]?.title).toContain("英語");
+  });
+
   it("予定に合わせた音楽の提案を返す", async () => {
     vi.stubGlobal(
       "fetch",

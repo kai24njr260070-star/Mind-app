@@ -1,4 +1,4 @@
-import type { AICandidate, MusicTrack } from "./types";
+import type { AICandidate, GoalIdea, MusicTrack } from "./types";
 
 /**
  * プロバイダ定義とプロンプト・パース処理の共有モジュール。
@@ -204,6 +204,81 @@ export function parseCandidates(content: string): AICandidate[] {
     }))
     .filter((c) => c.title.length > 0)
     .slice(0, 2);
+}
+
+/* ---------------- 目標づくりのヒント ---------------- */
+
+export const IDEA_SYSTEM_PROMPT = `あなたは Mind Signature の「目標づくりのヒント」アシスタントです。
+ユーザーが自分の目標を立てやすくなるよう、具体的な目標の例を提案します。
+
+ルール:
+- 他の利用者のデータや実績には言及しない(「他の人は」「みんなは」と書かない)。あくまで一般的な例として出す。
+- 5つ。分野をばらす(学び・健康・仕事・趣味・人間関係など)。
+- title は25文字以内で、行動と分量が分かる具体的な形にする(例:「毎朝10分、英語の音読をする」)。
+- 期限や数値を入れられるものは入れる。ユーザーの個人情報を勝手に決めつけない。
+- why は「なぜ立てやすいか」を日本語35文字以内で。
+- 出力はJSONのみ。形式: {"ideas":[{"title":"...","why":"..."}]}`;
+
+export interface IdeaRequestPayload {
+  /** 既存の目標名(あれば重複を避ける)。 */
+  goals?: string[];
+  /** onboarding = 最初の目標 / universe = 星画面 */
+  context?: string;
+}
+
+export function ideaContextLines(payload: IdeaRequestPayload): string {
+  const goals = (payload.goals ?? []).filter((g) => typeof g === "string" && g.trim()).slice(0, 10);
+  return [
+    payload.context === "onboarding"
+      ? "場面: 最初の目標をこれから決める"
+      : "場面: 目標の星を見ている途中",
+    goals.length > 0 ? `既にある目標(重複を避ける): ${goals.join(" / ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function ideaRequestBody(
+  model: string,
+  payload: IdeaRequestPayload
+): Record<string, unknown> {
+  return {
+    model,
+    temperature: 0.9,
+    max_tokens: 500,
+    messages: [
+      { role: "system", content: IDEA_SYSTEM_PROMPT },
+      { role: "user", content: ideaContextLines(payload) },
+    ],
+  };
+}
+
+export function parseIdeas(content: string): GoalIdea[] {
+  const start = content.indexOf("{");
+  const end = content.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("no json");
+  const parsed = JSON.parse(content.slice(start, end + 1)) as {
+    ideas?: unknown;
+    hints?: unknown;
+    examples?: unknown;
+  };
+  const raw = Array.isArray(parsed.ideas)
+    ? parsed.ideas
+    : Array.isArray(parsed.hints)
+      ? parsed.hints
+      : Array.isArray(parsed.examples)
+        ? parsed.examples
+        : [];
+  const ideas = raw
+    .filter((i): i is Record<string, unknown> => typeof i === "object" && i !== null)
+    .map((i) => ({
+      title: String(i.title ?? i.goal ?? "").trim(),
+      why: String(i.why ?? i.reason ?? "").trim(),
+    }))
+    .filter((i) => i.title.length > 0)
+    .slice(0, 6);
+  if (ideas.length === 0) throw new Error("no ideas");
+  return ideas;
 }
 
 /* ---------------- 音楽提案 ---------------- */

@@ -55,6 +55,13 @@ export interface TransientFx {
   at: number;
 }
 
+/** 目標づくりのヒント(AIが生成。他の利用者のデータは使わない)。 */
+export interface GoalIdea {
+  title: string;
+  /** なぜ立てやすいか・進め方の一言 */
+  why?: string;
+}
+
 /** AIが提案する1曲。Apple Musicは検索リンクで開く。 */
 export interface MusicTrack {
   title: string;

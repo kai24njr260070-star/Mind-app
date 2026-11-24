@@ -1367,3 +1367,83 @@ input[type="checkbox"] {
   text-decoration: none;
   color: var(--cyan);
 }
+
+/* ---------- 目標づくりのヒント(薄い例) ---------- */
+.idea-hint {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 86px);
+  transform: translateX(-50%);
+  z-index: 18;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 8px;
+  width: min(92vw, 520px);
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(127, 212, 255, 0.18);
+  background: rgba(10, 15, 32, 0.32);
+  opacity: 0.42;
+  pointer-events: none;
+  animation: idea-fade 7s ease-in-out forwards;
+}
+
+@keyframes idea-fade {
+  0% { opacity: 0; }
+  12% { opacity: 0.42; }
+  75% { opacity: 0.42; }
+  100% { opacity: 0; }
+}
+
+.idea-hint-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(127, 212, 255, 0.8);
+}
+
+.idea-hint-item {
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(225, 233, 255, 0.85);
+}
+
+.goal-examples {
+  margin-top: 14px;
+  text-align: center;
+}
+
+.goal-examples-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(127, 212, 255, 0.55);
+}
+
+.goal-example-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.goal-example {
+  padding: 6px 10px;
+  border: 1px dashed rgba(127, 212, 255, 0.22);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.goal-example:hover,
+.goal-example:focus-visible {
+  opacity: 1;
+  border-color: rgba(127, 212, 255, 0.5);
+  color: var(--text);
+}
