@@ -1,15 +1,18 @@
-import type { AICandidate } from "./types";
+import type { AICandidate, MusicTrack } from "./types";
 import {
   PROVIDER_BASES,
   PROVIDER_FALLBACK_MODELS,
   fissionRequestBody,
+  musicRequestBody,
   normBase,
   parseCandidates,
+  parseMusic,
   parseReflection,
   pickChatModel,
   reflectionRequestBody,
   supportsBrowserDirect,
   type FissionRequestPayload,
+  type MusicRequestPayload,
   type ParsedReflectionAction,
   type ReflectionRequestPayload,
 } from "./aiShared";
@@ -118,6 +121,17 @@ export async function directFission(payload: FissionRequestPayload): Promise<AIC
   const res = await chat(cfg, fissionRequestBody(cfg.model, payload));
   if (!res.ok) throw new Error(res.detail);
   return parseCandidates(res.content);
+}
+
+export async function directMusic(payload: MusicRequestPayload): Promise<{
+  mood: string;
+  summary: string;
+  tracks: MusicTrack[];
+}> {
+  const cfg = await resolveBrowserAIConfig();
+  const res = await chat(cfg, musicRequestBody(cfg.model, payload));
+  if (!res.ok) throw new Error(res.detail);
+  return parseMusic(res.content);
 }
 
 export async function directReflection(payload: ReflectionRequestPayload): Promise<{

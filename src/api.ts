@@ -1,5 +1,6 @@
-import type { AICandidate, FissionError } from "./types";
-import { directFission, directReflection, directStatus } from "./directAi";
+import type { AICandidate, FissionError, MusicTrack } from "./types";
+import { directFission, directMusic, directReflection, directStatus } from "./directAi";
+import type { MusicRequestPayload } from "./aiShared";
 
 export class FissionApiError extends Error {
   constructor(public kind: FissionError, public detail?: string) {
@@ -149,7 +150,50 @@ export async function requestReflection(payload: {
   return { summary: String(json.summary ?? "").trim(), actions };
 }
 
-/** 設定画面用:実際に生成できるかを確認する(キーそのものは返さない)。 */
+/**
+ * 予定に合わせた音楽の提案をAIに依頼する。
+ * 失敗時は例外(FissionApiError)を投げ、呼び出し側で端末内候補へ切り替える。
+ */
+export async function requestMusicSuggestions(
+  payload: MusicRequestPayload
+): Promise<{ mood: string; summary: string; tracks: MusicTrack[] }> {
+  let res: Response;
+  try {
+    res = await fetch("/api/ai/music", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    return viaDirect(() => directMusic(payload));
+  }
+  if (notWorkerApi(res)) return viaDirect(() => directMusic(payload));
+  if (!res.ok) throw await workerError(res);
+  const json = (await res.json()) as {
+    mood?: string;
+    summary?: string;
+    tracks?: Array<{ title?: unknown; artist?: unknown; reason?: unknown }>;
+  };
+  const tracks: MusicTrack[] = (json.tracks ?? [])
+    .filter((t) => typeof t?.title === "string")
+    .map((t) => ({
+      title: String(t.title ?? "").trim(),
+      artist: String(t.artist ?? "").trim(),
+      reason: String(t.reason ?? "").trim(),
+    }))
+    .filter((t) => t.title.length > 0)
+    .slice(0, 5);
+  if (tracks.length === 0) {
+    throw new FissionApiError("ai_failed", "音楽の候補を取得できませんでした");
+  }
+  return {
+    mood: String(json.mood ?? "").trim() || "おまかせ",
+    summary: String(json.summary ?? "").trim(),
+    tracks,
+  };
+}
+
+/** 設定画面用:実際に生成できるかを確認する(キーものは返さない)。 */
 export async function requestAIStatus(): Promise<{
   configured: boolean;
   ok: boolean;

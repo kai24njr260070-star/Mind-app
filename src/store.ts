@@ -26,6 +26,7 @@ export let settings: Settings = {
   // 予定のリマインドは既定でオン(通知が許可されていない間はアプリ内表示)。
   reminders: true,
   planningNudge: true,
+  musicTaste: "",
 };
 
 let loaded = false;

@@ -128,6 +128,23 @@ export function SettingsView(): React.JSX.Element {
       </div>
 
       <div className="page-block">
+        <h3 className="page-subtitle">音楽</h3>
+        <label className="setting-col">
+          <span>よく聴くアーティスト・ジャンル</span>
+          <input
+            type="text"
+            value={s.musicTaste}
+            placeholder="例: 米津玄師, Vaundy, lo-fi, ピアノ"
+            onChange={(e) => updateSettings({ musicTaste: e.target.value })}
+          />
+        </label>
+        <p className="page-note">
+          予定に合わせた曲をAIが提案し、Apple Musicの検索リンクで開きます(iPad/iPhoneはMusicアプリが起動)。
+          再生や「最近聴いた曲」の取得にはApple DeveloperのMusicKitトークンとユーザー認証が必要です。
+        </p>
+      </div>
+
+      <div className="page-block">
         <h3 className="page-subtitle">AI</h3>
         <p className="page-note">
           分裂候補・振り返りの生成は、Workerがあればそちら経由(/api/ai/*)で、Cloudflare Pages のような静的配信では

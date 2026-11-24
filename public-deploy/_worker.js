@@ -123,6 +123,61 @@ function parseCandidates(content) {
     description: String(c.description ?? "").trim()
   })).filter((c) => c.title.length > 0).slice(0, 2);
 }
+var MUSIC_SYSTEM_PROMPT = `\u3042\u306A\u305F\u306F Mind Signature \u306E\u300C\u97F3\u697D\u63D0\u6848\u300D\u30A2\u30B7\u30B9\u30BF\u30F3\u30C8\u3067\u3059\u3002
+\u30E6\u30FC\u30B6\u30FC\u304C\u3053\u308C\u304B\u3089\u5B9F\u884C\u3059\u308B\u4E88\u5B9A(\u76EE\u6A19\u3068\u6642\u9593\u5E2F)\u306B\u5408\u3046\u66F2\u3092\u3001Apple Music \u3067\u63A2\u305B\u308B\u5F62\u3067\u63D0\u6848\u3057\u307E\u3059\u3002
+
+\u30EB\u30FC\u30EB:
+- \u5B9F\u969B\u306B\u5B58\u5728\u3057\u3001Apple Music \u3067\u8074\u3051\u308B\u66F2\u3060\u3051\u3092\u63D0\u6848\u3059\u308B(\u67B6\u7A7A\u306E\u66F2\u540D\u306F\u7981\u6B62)\u3002
+- 3\u301C5\u66F2\u3002\u540C\u3058\u30A2\u30FC\u30C6\u30A3\u30B9\u30C8\u3092\u7E70\u308A\u8FD4\u3055\u306A\u3044\u3002
+- \u52C9\u5F37\u30FB\u4F5C\u696D\u30FB\u96C6\u4E2D\u306E\u4E88\u5B9A \u2192 \u6B4C\u8A5E\u304C\u5C11\u306A\u304F\u843D\u3061\u7740\u304F\u66F2(lo-fi\u3001\u30D4\u30A2\u30CE\u3001\u30A2\u30F3\u30D3\u30A8\u30F3\u30C8\u3001\u30AF\u30E9\u30B7\u30C3\u30AF)\u3002
+- \u6C17\u5206\u3092\u4E0A\u3052\u308B\u30FB\u904B\u52D5\u30FB\u697D\u3057\u3080\u4E88\u5B9A \u2192 \u660E\u308B\u304F\u30C6\u30F3\u30DD\u306E\u3042\u308B\u66F2\u3002
+- \u30E6\u30FC\u30B6\u30FC\u306E\u597D\u307F(\u3088\u304F\u8074\u304F\u30A2\u30FC\u30C6\u30A3\u30B9\u30C8\u30FB\u30B8\u30E3\u30F3\u30EB)\u304C\u6E21\u3055\u308C\u305F\u3089\u3001\u305D\u306E\u96F0\u56F2\u6C17\u3092\u512A\u5148\u3059\u308B\u3002\u597D\u307F\u304C\u4E0D\u660E\u306A\u3089\u738B\u9053\u306E\u66F2\u3092\u9078\u3076\u3002
+- \u9732\u9AA8\u306A\u6027\u8868\u73FE\u30FB\u66B4\u529B\u3092\u60F3\u8D77\u3055\u305B\u308B\u66F2\u306F\u907F\u3051\u308B\u3002
+- reason \u306F\u300C\u306A\u305C\u3053\u306E\u4E88\u5B9A\u306B\u5408\u3046\u304B\u300D\u3092\u65E5\u672C\u8A9E30\u6587\u5B57\u4EE5\u5185\u3067\u3002
+- summary \u306F\u63D0\u6848\u5168\u4F53\u306E\u8AAC\u660E\u3092\u65E5\u672C\u8A9E50\u6587\u5B57\u4EE5\u5185\u3067\u3002
+- \u51FA\u529B\u306FJSON\u306E\u307F\u3002\u5F62\u5F0F: {"mood":"\u96C6\u4E2D","summary":"...","tracks":[{"title":"...","artist":"...","reason":"..."}]}`;
+function musicContextLines(payload) {
+  const preference = String(payload.preference ?? "auto");
+  const preferenceLabel = preference === "calm" ? "\u9759\u304B\u3081(\u843D\u3061\u7740\u304F\u66F2)" : preference === "upbeat" ? "\u660E\u308B\u304F\u4E0A\u3052\u305F\u3044" : "\u304A\u307E\u304B\u305B(\u4E88\u5B9A\u304B\u3089\u5224\u65AD)";
+  const duration = Number.isFinite(payload.durationMinutes) ? Number(payload.durationMinutes) : null;
+  return [
+    `\u4E88\u5B9A: ${String(payload.goalTitle ?? "").slice(0, 80)}`,
+    payload.goalDescription ? `\u88DC\u8DB3: ${String(payload.goalDescription).slice(0, 120)}` : "",
+    payload.start && payload.end ? `\u6642\u9593\u5E2F: ${payload.start}\u301C${payload.end}` : "",
+    duration ? `\u9577\u3055: \u7D04${duration}\u5206` : "",
+    `\u5E0C\u671B: ${preferenceLabel}`,
+    payload.taste ? `\u597D\u307F: ${String(payload.taste).slice(0, 200)}` : ""
+  ].filter(Boolean).join("\n");
+}
+function musicRequestBody(model, payload) {
+  return {
+    model,
+    temperature: 0.8,
+    max_tokens: 600,
+    messages: [
+      { role: "system", content: MUSIC_SYSTEM_PROMPT },
+      { role: "user", content: musicContextLines(payload) }
+    ]
+  };
+}
+function parseMusic(content) {
+  const start = content.indexOf("{");
+  const end = content.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("no json");
+  const parsed = JSON.parse(content.slice(start, end + 1));
+  const raw = Array.isArray(parsed.tracks) ? parsed.tracks : Array.isArray(parsed.songs) ? parsed.songs : [];
+  const tracks = raw.filter((t) => typeof t === "object" && t !== null).map((t) => ({
+    title: String(t.title ?? t.name ?? "").trim(),
+    artist: String(t.artist ?? "").trim(),
+    reason: String(t.reason ?? "").trim()
+  })).filter((t) => t.title.length > 0).slice(0, 5);
+  if (tracks.length === 0) throw new Error("no tracks");
+  return {
+    mood: String(parsed.mood ?? "").trim() || "\u304A\u307E\u304B\u305B",
+    summary: String(parsed.summary ?? "").trim(),
+    tracks
+  };
+}
 function parseReflection(content) {
   const start = content.indexOf("{");
   const end = content.lastIndexOf("}");
@@ -312,6 +367,43 @@ async function handleReflection(request, env) {
   }
   return Response.json({ error: "ai_failed", detail }, { status: 502 });
 }
+async function handleMusic(request, env) {
+  const cfg = requestAIConfig(request, env);
+  if (!cfg.key || !cfg.baseUrl) {
+    return Response.json({ error: "not_configured" }, { status: 503 });
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  if (!String(body.goalTitle ?? "").trim()) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  const models = await resolveModels(cfg);
+  if (models.length === 0) {
+    return Response.json(
+      { error: "ai_failed", detail: "\u30E2\u30C7\u30EB\u3092\u6C7A\u5B9A\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F" },
+      { status: 502 }
+    );
+  }
+  let detail = "";
+  for (const model of models) {
+    const result = await chatCompletion(cfg, musicRequestBody(model, body));
+    if (!result.ok) {
+      detail = `${model} \u2192 ${result.detail}`;
+      if (shouldRetryWithNextModel(result.status)) continue;
+      break;
+    }
+    try {
+      return Response.json(parseMusic(result.content));
+    } catch {
+      detail = `${model} \u2192 \u66F2\u306E\u5019\u88DC\u3092\u89E3\u6790\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F`;
+    }
+  }
+  return Response.json({ error: "ai_failed", detail }, { status: 502 });
+}
 async function handleStatus(request, env) {
   const cfg = requestAIConfig(request, env);
   const envConfigured = Boolean(
@@ -354,6 +446,9 @@ var index_default = {
       }
       if (url.pathname === "/api/ai/reflection" && request.method === "POST") {
         return await handleReflection(request, env);
+      }
+      if (url.pathname === "/api/ai/music" && request.method === "POST") {
+        return await handleMusic(request, env);
       }
       return Response.json({ error: "not_found" }, { status: 404 });
     }

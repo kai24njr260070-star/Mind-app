@@ -111,6 +111,44 @@ describe("WorkerのAI生成", () => {
     expect(body.detail).not.toContain("gsk_secret_value");
   });
 
+  it("予定に合わせた音楽の提案を返す", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/models")) return jsonResponse({ data: [{ id: "llama-3.3-70b-versatile" }] });
+        return jsonResponse({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  mood: "集中",
+                  summary: "静かに作業できます",
+                  tracks: [{ title: "Time", artist: "Hans Zimmer", reason: "没頭できる" }],
+                }),
+              },
+            },
+          ],
+        });
+      })
+    );
+
+    const req = new Request("https://example.com/api/ai/music", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-ai-provider": "groq",
+        "x-ai-key": "gsk_key_music",
+      },
+      body: JSON.stringify({ goalTitle: "英語の勉強", preference: "calm" }),
+    });
+    const res = await worker.fetch(req, env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { mood: string; tracks: Array<{ title: string }> };
+    expect(body.mood).toBe("集中");
+    expect(body.tracks[0]?.title).toBe("Time");
+  });
+
   it("接続テストは /models ではなく実際の生成で判定する", async () => {
     vi.stubGlobal(
       "fetch",

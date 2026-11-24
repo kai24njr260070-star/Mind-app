@@ -4,11 +4,14 @@ import {
   PROVIDER_BASES,
   PROVIDER_FALLBACK_MODELS,
   fissionRequestBody,
+  musicRequestBody,
   parseCandidates,
+  parseMusic,
   parseReflection,
   pickChatModel,
   reflectionRequestBody,
   type FissionRequestPayload,
+  type MusicRequestPayload,
   type ReflectionRequestPayload,
 } from "../src/aiShared";
 
@@ -259,6 +262,51 @@ async function handleReflection(request: Request, env: Env): Promise<Response> {
 }
 
 /**
+ * 予定に合わせた音楽の提案。Apple Music の検索リンクで開く(曲の再生はしない)。
+ */
+async function handleMusic(request: Request, env: Env): Promise<Response> {
+  const cfg = requestAIConfig(request, env);
+  if (!cfg.key || !cfg.baseUrl) {
+    return Response.json({ error: "not_configured" }, { status: 503 });
+  }
+
+  let body: MusicRequestPayload;
+  try {
+    body = (await request.json()) as MusicRequestPayload;
+  } catch {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+  if (!String(body.goalTitle ?? "").trim()) {
+    return Response.json({ error: "bad_request" }, { status: 400 });
+  }
+
+  const models = await resolveModels(cfg);
+  if (models.length === 0) {
+    return Response.json(
+      { error: "ai_failed", detail: "モデルを決定できませんでした" },
+      { status: 502 }
+    );
+  }
+
+  let detail = "";
+  for (const model of models) {
+    const result = await chatCompletion(cfg, musicRequestBody(model, body));
+    if (!result.ok) {
+      detail = `${model} → ${result.detail}`;
+      if (shouldRetryWithNextModel(result.status)) continue;
+      break;
+    }
+    try {
+      return Response.json(parseMusic(result.content));
+    } catch {
+      detail = `${model} → 曲の候補を解析できませんでした`;
+    }
+  }
+
+  return Response.json({ error: "ai_failed", detail }, { status: 502 });
+}
+
+/**
  * 設定画面の「接続テスト」用。
  * 実際の生成と同じモデルで小さな chat を1回だけ呼び、生成できることまで確認する。
  * (以前は /models が取れるだけで OK にしていたため、生成だけ失敗する状態を見逃していた)
@@ -311,6 +359,9 @@ export default {
       }
       if (url.pathname === "/api/ai/reflection" && request.method === "POST") {
         return await handleReflection(request, env);
+      }
+      if (url.pathname === "/api/ai/music" && request.method === "POST") {
+        return await handleMusic(request, env);
       }
       return Response.json({ error: "not_found" }, { status: 404 });
     }

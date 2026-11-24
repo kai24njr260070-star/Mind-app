@@ -13,6 +13,8 @@ import {
 } from "./store";
 import { useAppState } from "./useAppState";
 import { childCount } from "./types";
+import { MusicPanel } from "./MusicPanel";
+import { blockRange } from "./reminders";
 
 const STATUS_LABEL: Record<string, string> = {
   active: "進行中",
@@ -39,6 +41,18 @@ export function DetailPanel(): React.JSX.Element | null {
 
   const children = childCount(state.goals, goal.id);
   const goalBlocks = blocksForGoal(goal.id);
+  // いま実行中の予定、無ければ次に来る予定に音楽を提案する
+  const now = new Date();
+  const activeBlock = goalBlocks.find((b) => {
+    const range = blockRange(b);
+    return !!range && range.start <= now && now < range.end;
+  });
+  const musicBlock =
+    activeBlock ??
+    goalBlocks.find((b) => {
+      const range = blockRange(b);
+      return !!range && range.end > now;
+    });
 
   return (
     <div className="sheet">
@@ -128,6 +142,10 @@ export function DetailPanel(): React.JSX.Element | null {
         {blockError && <p className="page-note err">{blockError}</p>}
         <p className="page-note">通知はアプリを開いている間に届きます(設定でオン/オフできます)。</p>
       </section>
+
+      {musicBlock && (
+        <MusicPanel goal={goal} block={musicBlock} active={musicBlock === activeBlock} />
+      )}
 
       <div className="row sheet-actions">
         {goal.status === "active" && (

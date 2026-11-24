@@ -89,7 +89,7 @@ function reminderFor(
     title: lead === 0 ? `開始時刻です: ${goal.title}` : `${leadLabel}: ${goal.title}`,
     body:
       lead === 0
-        ? `${block.start}〜${block.end} の予定です。今から実行しましょう。`
+        ? `${block.start}〜${block.end} の予定です。今から実行しましょう。詳細画面の「音楽」から合う曲を提案できます。`
         : `${block.start}〜${block.end} の予定です。そろそろ準備を始めましょう。`,
   };
 }

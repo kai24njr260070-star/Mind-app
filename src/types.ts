@@ -55,6 +55,22 @@ export interface TransientFx {
   at: number;
 }
 
+/** AIが提案する1曲。Apple Musicは検索リンクで開く。 */
+export interface MusicTrack {
+  title: string;
+  artist: string;
+  /** この曲を選んだ理由(予定との関係) */
+  reason?: string;
+}
+
+/** 予定に合わせた音楽の提案。origin が local のときは端末内の候補。 */
+export interface MusicSuggestion {
+  mood: string;
+  summary: string;
+  tracks: MusicTrack[];
+  origin: "ai" | "local";
+}
+
 /**
  * 目標の実行予定(何時から何時まで)。
  * 開始の1時間前・10分前・開始時刻に通知する。
@@ -126,6 +142,8 @@ export interface Settings {
   reminders: boolean;
   /** 「明日の予定は作りましたか？」のナッジ(8時〜22時に30分おき) */
   planningNudge: boolean;
+  /** 音楽提案の好み(よく聴くアーティスト・ジャンル)。AIへのヒントに使う。 */
+  musicTaste: string;
 }
 
 export interface AppState {

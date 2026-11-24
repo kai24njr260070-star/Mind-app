@@ -1287,3 +1287,83 @@ input[type="checkbox"] {
   cursor: pointer;
   padding: 0 2px;
 }
+
+/* ---------- 音楽の提案 ---------- */
+.btn.on {
+  border-color: rgba(127, 212, 255, 0.6);
+  color: var(--cyan);
+  background: rgba(127, 212, 255, 0.12);
+}
+
+.music-controls {
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.music-summary {
+  margin: 6px 0 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+.music-summary strong {
+  color: var(--text);
+}
+
+.music-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.music-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.music-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.music-title {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.music-artist {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.music-reason {
+  font-size: 11px;
+  color: rgba(127, 212, 255, 0.75);
+  line-height: 1.4;
+}
+
+.music-link {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.music-playlist {
+  display: inline-block;
+  margin-bottom: 4px;
+  text-decoration: none;
+  color: var(--cyan);
+}

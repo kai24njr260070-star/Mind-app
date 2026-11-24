@@ -1,4 +1,4 @@
-import type { AICandidate } from "./types";
+import type { AICandidate, MusicTrack } from "./types";
 
 /**
  * プロバイダ定義とプロンプト・パース処理の共有モジュール。
@@ -204,6 +204,98 @@ export function parseCandidates(content: string): AICandidate[] {
     }))
     .filter((c) => c.title.length > 0)
     .slice(0, 2);
+}
+
+/* ---------------- 音楽提案 ---------------- */
+
+export const MUSIC_SYSTEM_PROMPT = `あなたは Mind Signature の「音楽提案」アシスタントです。
+ユーザーがこれから実行する予定(目標と時間帯)に合う曲を、Apple Music で探せる形で提案します。
+
+ルール:
+- 実際に存在し、Apple Music で聴ける曲だけを提案する(架空の曲名は禁止)。
+- 3〜5曲。同じアーティストを繰り返さない。
+- 勉強・作業・集中の予定 → 歌詞が少なく落ち着く曲(lo-fi、ピアノ、アンビエント、クラシック)。
+- 気分を上げる・運動・楽しむ予定 → 明るくテンポのある曲。
+- ユーザーの好み(よく聴くアーティスト・ジャンル)が渡されたら、その雰囲気を優先する。好みが不明なら王道の曲を選ぶ。
+- 露骨な性表現・暴力を想起させる曲は避ける。
+- reason は「なぜこの予定に合うか」を日本語30文字以内で。
+- summary は提案全体の説明を日本語50文字以内で。
+- 出力はJSONのみ。形式: {"mood":"集中","summary":"...","tracks":[{"title":"...","artist":"...","reason":"..."}]}`;
+
+export interface MusicRequestPayload {
+  goalTitle?: string;
+  goalDescription?: string;
+  start?: string;
+  end?: string;
+  durationMinutes?: number;
+  /** auto | calm | upbeat */
+  preference?: string;
+  /** よく聴くアーティスト・ジャンル */
+  taste?: string;
+}
+
+export function musicContextLines(payload: MusicRequestPayload): string {
+  const preference = String(payload.preference ?? "auto");
+  const preferenceLabel =
+    preference === "calm" ? "静かめ(落ち着く曲)" : preference === "upbeat" ? "明るく上げたい" : "おまかせ(予定から判断)";
+  const duration = Number.isFinite(payload.durationMinutes) ? Number(payload.durationMinutes) : null;
+  return [
+    `予定: ${String(payload.goalTitle ?? "").slice(0, 80)}`,
+    payload.goalDescription ? `補足: ${String(payload.goalDescription).slice(0, 120)}` : "",
+    payload.start && payload.end ? `時間帯: ${payload.start}〜${payload.end}` : "",
+    duration ? `長さ: 約${duration}分` : "",
+    `希望: ${preferenceLabel}`,
+    payload.taste ? `好み: ${String(payload.taste).slice(0, 200)}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function musicRequestBody(
+  model: string,
+  payload: MusicRequestPayload
+): Record<string, unknown> {
+  return {
+    model,
+    temperature: 0.8,
+    max_tokens: 600,
+    messages: [
+      { role: "system", content: MUSIC_SYSTEM_PROMPT },
+      { role: "user", content: musicContextLines(payload) },
+    ],
+  };
+}
+
+export function parseMusic(content: string): { mood: string; summary: string; tracks: MusicTrack[] } {
+  const start = content.indexOf("{");
+  const end = content.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("no json");
+  const parsed = JSON.parse(content.slice(start, end + 1)) as {
+    mood?: unknown;
+    summary?: unknown;
+    tracks?: unknown;
+    songs?: unknown;
+  };
+  const raw = Array.isArray(parsed.tracks)
+    ? parsed.tracks
+    : Array.isArray(parsed.songs)
+      ? parsed.songs
+      : [];
+  const tracks = raw
+    .filter((t): t is Record<string, unknown> => typeof t === "object" && t !== null)
+    .map((t) => ({
+      title: String(t.title ?? t.name ?? "").trim(),
+      artist: String(t.artist ?? "").trim(),
+      reason: String(t.reason ?? "").trim(),
+    }))
+    .filter((t) => t.title.length > 0)
+    .slice(0, 5);
+  if (tracks.length === 0) throw new Error("no tracks");
+  return {
+    mood: String(parsed.mood ?? "").trim() || "おまかせ",
+    summary: String(parsed.summary ?? "").trim(),
+    tracks,
+  };
 }
 
 export type ReflectionKind = "split" | "reschedule" | "focus" | "rest";
