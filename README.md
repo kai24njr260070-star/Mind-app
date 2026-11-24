@@ -195,7 +195,7 @@ npm run sites:build    # build → worker を esbuild でバンドル → assets
 `npm run sites:build` を実行すると、JSとCSSをHTMLに埋め込んだ**単一ファイル**が `public-deploy/index.html` に生成されます(外部アセット参照ゼロ)。
 
 - Cloudflare のビルド設定: ビルドコマンド `npm run sites:build` / 出力ディレクトリ `public-deploy`
-- `public-deploy/_worker.js` も同時に生成されます(Pages の高度なモード)。これがあると Pages でも `/api/ai/*` が動き、Freebuff / OpenAI / xAI のキーもサーバー側で使えます。ビルドを行わない場合は `_worker.js` が無いため、ブラウザ直結(Groq / Gemini)のみになります
+- `public-deploy/_worker.js` とリポジトリ直下の `_worker.js` も同時に生成されます(Pages の高度なモード)。リポジトリをそのまま配信する構成(ビルドなし・出力ディレクトリ未指定)でも、この `_worker.js` があれば `/api/ai/*` が動き、Freebuff / OpenAI / xAI のキーもサーバー側で使えます。古い `_worker.js` が残るとAPIの挙動が古くなるので、ソースを変えたら `npm run sites:build` で作り直してください
 - ビルドを行わない静的配信でも、`public-deploy` を配信ディレクトリに指定すればそのまま動きます
 - リポジトリ直下の `index.html` は**ビルド済み単一ファイル**です(Cloudflare Pages が出力ディレクトリ指定なしでそのまま配信しても起動する形)。Vite の開発用エントリは `app.html` に分けてあり、`npm run dev` では `/app.html` が開きます
 - ソースを変更したら `npm run sites:build` を実行し、`index.html` と `public-deploy/index.html` を作り直してからコミットしてください(`index.html` は生成物です)
