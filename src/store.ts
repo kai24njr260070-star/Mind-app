@@ -1,4 +1,4 @@
-import type { AICandidate, AppState, FissionError, Goal, Memo, Reflection, ReflectionAction, Settings } from "./types";
+import type { AICandidate, AppState, FissionError, Goal, GoalBlock, Memo, Reflection, ReflectionAction, Settings } from "./types";
 import { requestFissionCandidates } from "./api";
 import { autoBackup, backupDataAt, payloadOf } from "./backup";
 
@@ -10,6 +10,7 @@ let state: AppState = {
   candidates: [],
   memos: [],
   reflections: [],
+  blocks: [],
   selection: null,
   fission: null,
   fx: null,
@@ -22,6 +23,9 @@ export let settings: Settings = {
   providerId: "freebuff",
   aiModel: "",
   perProvider: {},
+  // 予定のリマインドは既定でオン(通知が許可されていない間はアプリ内表示)。
+  reminders: true,
+  planningNudge: true,
 };
 
 let loaded = false;
@@ -37,13 +41,14 @@ function loadPersisted(): void {
         candidates: Array.isArray(parsed.candidates) ? parsed.candidates : [],
         memos: Array.isArray(parsed.memos) ? parsed.memos : [],
         reflections: Array.isArray(parsed.reflections) ? parsed.reflections : [],
+        blocks: Array.isArray(parsed.blocks) ? parsed.blocks : [],
         selection: null,
         fission: null,
         fx: null,
       };
     }
   } catch {
-    state = { goals: [], candidates: [], memos: [], reflections: [], selection: null, fission: null, fx: null };
+    state = { goals: [], candidates: [], memos: [], reflections: [], blocks: [], selection: null, fission: null, fx: null };
   }
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -74,6 +79,7 @@ function loadPersisted(): void {
           candidates: Array.isArray(parsed.candidates) ? parsed.candidates : state.candidates,
           memos: Array.isArray(parsed.memos) ? parsed.memos : state.memos,
           reflections: Array.isArray(parsed.reflections) ? parsed.reflections : state.reflections,
+          blocks: Array.isArray(parsed.blocks) ? parsed.blocks : state.blocks,
         });
       } catch {
         // 解析できない更新は無視
@@ -392,8 +398,64 @@ export function setDeadline(id: string, deadline: string | undefined): void {
   persist();
 }
 
+/** 端末のローカル日付(UTCずれを避ける)。 */
+export function todayISO(now: Date = new Date()): string {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * 目標に実行予定(何時から何時まで)を追加する。
+ * 通知は開始1時間前・10分前・開始時刻(reminders.ts)。
+ */
+export function addBlock(
+  goalId: string,
+  date: string,
+  start: string,
+  end: string
+): { ok: boolean; error?: string } {
+  if (!getGoal(goalId)) return { ok: false, error: "目標が見つかりません" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: "日付を選んでください" };
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end)) {
+    return { ok: false, error: "時刻を入力してください" };
+  }
+  if (start >= end) return { ok: false, error: "終了時刻は開始時刻より後にしてください" };
+  const block: GoalBlock = {
+    id: uid("block"),
+    goalId,
+    date,
+    start,
+    end,
+    createdAt: Date.now(),
+  };
+  setState({ blocks: [...state.blocks, block] });
+  persist();
+  return { ok: true };
+}
+
+export function deleteBlock(id: string): void {
+  setState({ blocks: state.blocks.filter((b) => b.id !== id) });
+  persist();
+}
+
+/** 指定目標の予定を日時順に返す。 */
+export function blocksForGoal(goalId: string): GoalBlock[] {
+  return state.blocks
+    .filter((b) => b.goalId === goalId)
+    .sort((a, b) => `${a.date} ${a.start}`.localeCompare(`${b.date} ${b.start}`));
+}
+
+/** 指定日(YYYY-MM-DD)の予定を時刻順に返す。 */
+export function blocksOn(date: string): GoalBlock[] {
+  return state.blocks
+    .filter((b) => b.date === date)
+    .sort((a, b) => a.start.localeCompare(b.start));
+}
+
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayISO();
 }
 
 export function addMemo(content: string, date?: string, tags: string[] = []): Memo {
@@ -474,7 +536,15 @@ export function declineReflection(id: string): void {
 /** バックアップ用の全データ書き出し(spec §13 データ管理)。 */
 export function exportData(): string {
   return JSON.stringify(
-    { version: 1, exportedAt: new Date().toISOString(), goals: state.goals, candidates: state.candidates, memos: state.memos, reflections: state.reflections },
+    {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      goals: state.goals,
+      candidates: state.candidates,
+      memos: state.memos,
+      reflections: state.reflections,
+      blocks: state.blocks,
+    },
     null,
     2
   );
@@ -492,6 +562,7 @@ export function importData(json: string): { ok: boolean; error?: string } {
       candidates: Array.isArray(parsed.candidates) ? (parsed.candidates as AppState["candidates"]) : [],
       memos: Array.isArray(parsed.memos) ? (parsed.memos as Memo[]) : [],
       reflections: Array.isArray(parsed.reflections) ? (parsed.reflections as Reflection[]) : [],
+      blocks: Array.isArray(parsed.blocks) ? (parsed.blocks as GoalBlock[]) : [],
       selection: null,
       fission: null,
       fx: null,
@@ -514,7 +585,7 @@ export function restoreBackupAt(at: number): { ok: boolean; error?: string } {
 export function clearAllData(): void {
   // 全削除も取り消せるように、削除前の状態を残す
   backupNow();
-  state = { goals: [], candidates: [], memos: [], reflections: [], selection: null, fission: null, fx: null };
+  state = { goals: [], candidates: [], memos: [], reflections: [], blocks: [], selection: null, fission: null, fx: null };
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {

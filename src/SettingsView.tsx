@@ -3,6 +3,18 @@ import { clearAllData, exportData, getSettings, importData, restoreBackupAt, sel
 import { listBackups, MAX_BACKUPS } from "./backup";
 import { useAppState } from "./useAppState";
 import { requestAIStatus } from "./api";
+import {
+  notificationPermission,
+  requestNotificationPermission,
+  type NotificationPermissionState,
+} from "./notifications";
+
+const PERMISSION_LABEL: Record<NotificationPermissionState, string> = {
+  granted: "許可済み(OSの通知が出ます)",
+  denied: "ブロックされています(ブラウザの設定から許可してください)",
+  default: "未許可(アプリ内のお知らせだけ表示されます)",
+  unsupported: "この環境では通知APIが使えません",
+};
 
 const PROVIDERS: Array<{ id: string; label: string; hint: string; keyHint: string }> = [
   { id: "freebuff", label: "Freebuff(既定)", hint: "https://freebuff.com/api/v1/paid", keyHint: "freebuff.com アカウント → Developer API で発行" },
@@ -33,6 +45,7 @@ export function SettingsView(): React.JSX.Element {
   const backups = listBackups();
   const [aiStatus, setAIStatus] = useState<"idle" | "checking" | "ok" | "failed">("idle");
   const [aiResult, setAIResult] = useState<Status | null>(null);
+  const [perm, setPerm] = useState<NotificationPermissionState>(() => notificationPermission());
 
   const doExport = () => {
     const blob = new Blob([exportData()], { type: "application/json" });
@@ -77,6 +90,41 @@ export function SettingsView(): React.JSX.Element {
           />
         </label>
         <p className="page-note">アニメーション/効果音は既定で控えめに設定されています。OSの「動きを減らす」設定にも従います。</p>
+      </div>
+
+      <div className="page-block">
+        <h3 className="page-subtitle">予定の通知</h3>
+        <label className="setting-row">
+          <span>予定のリマインド(1時間前・10分前・開始時刻)</span>
+          <input
+            type="checkbox"
+            checked={s.reminders}
+            onChange={(e) => updateSettings({ reminders: e.target.checked })}
+          />
+        </label>
+        <label className="setting-row">
+          <span>明日の予定づくりナッジ(8:00〜22:00に30分おき)</span>
+          <input
+            type="checkbox"
+            checked={s.planningNudge}
+            onChange={(e) => updateSettings({ planningNudge: e.target.checked })}
+          />
+        </label>
+        <div className="row">
+          <button
+            className="btn small"
+            onClick={async () => {
+              setPerm(await requestNotificationPermission());
+            }}
+          >
+            ブラウザ通知を許可
+          </button>
+          <span className="page-note">{PERMISSION_LABEL[perm]}</span>
+        </div>
+        <p className="page-note">
+          通知が届くのはアプリを開いている間です(Webアプリの制限)。許可しない場合もアプリ内にお知らせを表示します。
+          明日の予定が1件でも入るとナッジは止まります。
+        </p>
       </div>
 
       <div className="page-block">

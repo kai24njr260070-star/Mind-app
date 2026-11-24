@@ -55,6 +55,22 @@ export interface TransientFx {
   at: number;
 }
 
+/**
+ * 目標の実行予定(何時から何時まで)。
+ * 開始の1時間前・10分前・開始時刻に通知する。
+ */
+export interface GoalBlock {
+  id: string;
+  goalId: string;
+  /** YYYY-MM-DD(端末のローカル日付) */
+  date: string;
+  /** HH:MM(24時間) */
+  start: string;
+  /** HH:MM(24時間) */
+  end: string;
+  createdAt: number;
+}
+
 /** 日次メモ(spec §5)。目標ツリーとは独立。書いても自動的に目標化されない。 */
 export interface Memo {
   id: string;
@@ -106,6 +122,10 @@ export interface Settings {
   aiModel: string;
   /** プロバイダごとのAPIキー/モデル。プロバイダを切り替えても消えないよう保存する。 */
   perProvider?: Record<string, { apiKey: string; aiModel: string }>;
+  /** 予定のリマインド(1時間前・10分前・開始時刻)を有効にする */
+  reminders: boolean;
+  /** 「明日の予定は作りましたか？」のナッジ(8時〜22時に30分おき) */
+  planningNudge: boolean;
 }
 
 export interface AppState {
@@ -113,6 +133,8 @@ export interface AppState {
   candidates: CandidateRecord[];
   memos: Memo[];
   reflections: Reflection[];
+  /** 目標に設定した実行予定 */
+  blocks: GoalBlock[];
   selection: string | null;
   fission: FissionState | null;
   fx: TransientFx | null;

@@ -27,7 +27,7 @@ interface BackupFile {
   entries: BackupEntry[];
 }
 
-type Snapshot = Pick<AppState, "goals" | "candidates" | "memos" | "reflections">;
+type Snapshot = Pick<AppState, "goals" | "candidates" | "memos" | "reflections" | "blocks">;
 
 function storage(): Storage | null {
   try {
@@ -37,13 +37,14 @@ function storage(): Storage | null {
   }
 }
 
-/** 永続化と同じ形(goals/candidates/memos/reflections)のJSONを作る。 */
+/** 永続化と同じ形(goals/candidates/memos/reflections/blocks)のJSONを作る。 */
 export function payloadOf(snapshot: Snapshot): string {
   return JSON.stringify({
     goals: snapshot.goals,
     candidates: snapshot.candidates,
     memos: snapshot.memos,
     reflections: snapshot.reflections,
+    blocks: snapshot.blocks,
   });
 }
 

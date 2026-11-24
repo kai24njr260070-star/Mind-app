@@ -9,6 +9,7 @@ import { ReflectionView } from "./ReflectionView";
 import { SettingsView } from "./SettingsView";
 import { StartupAnimation, type StartupKind } from "./Startup";
 import { CommandPalette } from "./CommandPalette";
+import { ReminderHost } from "./ReminderHost";
 import { createRootGoal, ensureLoaded, getSettings, selectGoal } from "./store";
 import { useAppState } from "./useAppState";
 
@@ -192,6 +193,8 @@ export function App(): React.JSX.Element {
           onPickGoal={(id) => selectGoal(id)}
         />
       )}
+
+      <ReminderHost />
 
       {startup && (
         <StartupAnimation

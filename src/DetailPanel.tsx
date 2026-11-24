@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
-import { deleteGoalDeep, getGoal, selectGoal, setDeadline, setGoalStatus, startFission } from "./store";
+import {
+  addBlock,
+  blocksForGoal,
+  deleteBlock,
+  deleteGoalDeep,
+  getGoal,
+  selectGoal,
+  setDeadline,
+  setGoalStatus,
+  startFission,
+  todayISO,
+} from "./store";
 import { useAppState } from "./useAppState";
 import { childCount } from "./types";
 
@@ -11,6 +22,11 @@ const STATUS_LABEL: Record<string, string> = {
 export function DetailPanel(): React.JSX.Element | null {
   const state = useAppState();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // 実行予定(何時から何時まで)の入力
+  const [blockDate, setBlockDate] = useState(() => todayISO());
+  const [blockStart, setBlockStart] = useState("09:00");
+  const [blockEnd, setBlockEnd] = useState("09:30");
+  const [blockError, setBlockError] = useState<string | null>(null);
   // 武装したまま放置すると、後で別の操作をしたつもりが「もう一度で削除」を
   // 踏んで親も子も一緒に消えてしまう事故を防ぐ。数秒で自動的に解除する。
   useEffect(() => {
@@ -22,6 +38,7 @@ export function DetailPanel(): React.JSX.Element | null {
   if (!goal || state.fission) return null;
 
   const children = childCount(state.goals, goal.id);
+  const goalBlocks = blocksForGoal(goal.id);
 
   return (
     <div className="sheet">
@@ -50,6 +67,67 @@ export function DetailPanel(): React.JSX.Element | null {
           <button className="btn ghost small" onClick={() => setDeadline(goal.id, undefined)}>解除</button>
         )}
       </div>
+
+      {/* 実行予定:開始1時間前・10分前・開始時刻に通知する */}
+      <section className="sheet-blocks" aria-label="実行予定">
+        <h3 className="sheet-section">実行予定</h3>
+        {goalBlocks.length === 0 ? (
+          <p className="page-note">
+            予定を入れると、開始の1時間前・10分前・開始時刻に通知します。
+          </p>
+        ) : (
+          <ul className="block-list">
+            {goalBlocks.map((b) => (
+              <li key={b.id} className="block-row">
+                <span className="block-when">
+                  {b.date === todayISO() ? "今日" : b.date} {b.start}〜{b.end}
+                </span>
+                <button
+                  type="button"
+                  className="btn ghost small"
+                  onClick={() => deleteBlock(b.id)}
+                  aria-label={`${b.date} ${b.start} の予定を削除`}
+                >
+                  削除
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="block-form">
+          <input
+            type="date"
+            value={blockDate}
+            aria-label="予定の日付"
+            onChange={(e) => setBlockDate(e.target.value)}
+          />
+          <input
+            type="time"
+            value={blockStart}
+            aria-label="開始時刻"
+            onChange={(e) => setBlockStart(e.target.value)}
+          />
+          <span className="block-sep">〜</span>
+          <input
+            type="time"
+            value={blockEnd}
+            aria-label="終了時刻"
+            onChange={(e) => setBlockEnd(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn primary small"
+            onClick={() => {
+              const res = addBlock(goal.id, blockDate, blockStart, blockEnd);
+              setBlockError(res.ok ? null : res.error ?? "予定を追加できませんでした");
+            }}
+          >
+            予定を追加
+          </button>
+        </div>
+        {blockError && <p className="page-note err">{blockError}</p>}
+        <p className="page-note">通知はアプリを開いている間に届きます(設定でオン/オフできます)。</p>
+      </section>
 
       <div className="row sheet-actions">
         {goal.status === "active" && (
