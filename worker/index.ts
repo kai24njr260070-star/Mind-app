@@ -24,6 +24,8 @@ export interface Env {
   GEMINI_API_KEY?: string;
   XAI_API_KEY?: string;
   FREEBUFF_MODEL?: string;
+  /** ネイティブアプリ等、APIをクロスオリジンで使う許可元(カンマ区切り)。 */
+  ALLOWED_ORIGINS?: string;
   ASSETS: { fetch: (request: Request) => Promise<Response> };
 }
 
@@ -60,7 +62,11 @@ function requestAIConfig(request: Request, env: Env): AIConfig {
 
   // 説明: headerKey(設定画面のキー)最優先。無ければ
   // 設定済みプロバイダの環境変数キー(Freebuff=OPENAI_API_KEY、Groq=GROQ_API_KEY)を使う。
-  const key = headerKey || (provider in ENV_KEYS ? envKey : null);
+  // ただしクロスオリジン(ネイティブアプリ等)からは環境変数のキーを使わない。
+  // そうしないと、どこかのサイトが Worker 経由で持ち主のキーを消費できてしまう。
+  const origin = request.headers.get("Origin") ?? "";
+  const sameOrigin = origin === "" || origin === new URL(request.url).origin;
+  const key = headerKey || (sameOrigin && provider in ENV_KEYS ? envKey : null);
   return { key: key || null, baseUrl, provider, modelHint: headerModel || env.FREEBUFF_MODEL || null };
 }
 
@@ -389,26 +395,64 @@ async function handleStatus(request: Request, env: Env): Promise<Response> {
   });
 }
 
+/**
+ * ネイティブアプリ(Capacitor/Tauri)からのAPI利用を許可するためのCORSヘッダ。
+ * 許可元は ALLOWED_ORIGINS で絞れる(既定はアプリのWebViewオリジンのみ)。
+ */
+function corsHeaders(request: Request, env: Env): Record<string, string> {
+  const origin = request.headers.get("Origin") ?? "";
+  if (!origin) return {};
+  const allowed = String(
+    env.ALLOWED_ORIGINS ?? "capacitor://localhost,https://localhost,http://localhost,tauri://localhost,http://tauri.localhost"
+  )
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!allowed.includes(origin)) return {};
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "content-type,x-ai-key,x-ai-provider,x-ai-model",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
+  };
+}
+
+function withCors(res: Response, cors: Record<string, string>): Response {
+  if (Object.keys(cors).length === 0) return res;
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
+async function routeApi(request: Request, env: Env, url: URL): Promise<Response> {
+  if (url.pathname === "/api/ai/status" && request.method === "GET") {
+    return await handleStatus(request, env);
+  }
+  if (url.pathname === "/api/ai/fission" && request.method === "POST") {
+    return await handleFission(request, env);
+  }
+  if (url.pathname === "/api/ai/reflection" && request.method === "POST") {
+    return await handleReflection(request, env);
+  }
+  if (url.pathname === "/api/ai/music" && request.method === "POST") {
+    return await handleMusic(request, env);
+  }
+  if (url.pathname === "/api/ai/ideas" && request.method === "POST") {
+    return await handleIdeas(request, env);
+  }
+  return Response.json({ error: "not_found" }, { status: 404 });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) {
-      if (url.pathname === "/api/ai/status" && request.method === "GET") {
-        return await handleStatus(request, env);
+      const cors = corsHeaders(request, env);
+      if (request.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: cors });
       }
-      if (url.pathname === "/api/ai/fission" && request.method === "POST") {
-        return await handleFission(request, env);
-      }
-      if (url.pathname === "/api/ai/reflection" && request.method === "POST") {
-        return await handleReflection(request, env);
-      }
-      if (url.pathname === "/api/ai/music" && request.method === "POST") {
-        return await handleMusic(request, env);
-      }
-      if (url.pathname === "/api/ai/ideas" && request.method === "POST") {
-        return await handleIdeas(request, env);
-      }
-      return Response.json({ error: "not_found" }, { status: 404 });
+      return withCors(await routeApi(request, env, url), cors);
     }
     return env.ASSETS.fetch(request);
   },

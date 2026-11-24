@@ -184,6 +184,51 @@ describe("WorkerのAI生成", () => {
     expect(body.tracks[0]?.title).toBe("Time");
   });
 
+  it("ネイティブアプリのOriginにはCORSを返し、プリフライトに応じる", async () => {
+    const preflight = new Request("https://example.com/api/ai/ideas", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "capacitor://localhost",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type,x-ai-key",
+      },
+    });
+    const res = await worker.fetch(preflight, env);
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("capacitor://localhost");
+    expect(res.headers.get("access-control-allow-headers")).toContain("x-ai-key");
+  });
+
+  it("許可していないOriginにはCORSヘッダを返さない", async () => {
+    const res = await worker.fetch(
+      new Request("https://example.com/api/ai/status", {
+        headers: { Origin: "https://evil.example", "x-ai-key": "gsk_key" },
+      }),
+      env
+    );
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("クロスオリジンでは環境変数のキーを消費しない", async () => {
+    const envWithKey = { ...env, GROQ_API_KEY: "gsk_server_side" };
+    const res = await worker.fetch(
+      new Request("https://example.com/api/ai/fission", {
+        method: "POST",
+        headers: {
+          Origin: "capacitor://localhost",
+          "content-type": "application/json",
+          "x-ai-provider": "groq",
+        },
+        body: JSON.stringify({ parent: { title: "AIを作る" }, ancestors: [], siblings: [], depth: 0 }),
+      }),
+      envWithKey
+    );
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("not_configured");
+    expect(res.headers.get("access-control-allow-origin")).toBe("capacitor://localhost");
+  });
+
   it("接続テストは /models ではなく実際の生成で判定する", async () => {
     vi.stubGlobal(
       "fetch",

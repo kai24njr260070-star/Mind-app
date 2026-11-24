@@ -250,7 +250,9 @@ function requestAIConfig(request, env) {
   const headerModel = request.headers.get("x-ai-model")?.trim() ?? "";
   const envKey = String(env[ENV_KEYS[provider] ?? "OPENAI_API_KEY"] ?? "").trim();
   const baseUrl = normBaseUrl(DEFAULT_BASES[provider] ?? DEFAULT_BASES.freebuff);
-  const key = headerKey || (provider in ENV_KEYS ? envKey : null);
+  const origin = request.headers.get("Origin") ?? "";
+  const sameOrigin = origin === "" || origin === new URL(request.url).origin;
+  const key = headerKey || (sameOrigin && provider in ENV_KEYS ? envKey : null);
   return { key: key || null, baseUrl, provider, modelHint: headerModel || env.FREEBUFF_MODEL || null };
 }
 function normBaseUrl(base) {
@@ -506,26 +508,54 @@ async function handleStatus(request, env) {
     envConfigured
   });
 }
+function corsHeaders(request, env) {
+  const origin = request.headers.get("Origin") ?? "";
+  if (!origin) return {};
+  const allowed = String(
+    env.ALLOWED_ORIGINS ?? "capacitor://localhost,https://localhost,http://localhost,tauri://localhost,http://tauri.localhost"
+  ).split(",").map((s) => s.trim()).filter(Boolean);
+  if (!allowed.includes(origin)) return {};
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "content-type,x-ai-key,x-ai-provider,x-ai-model",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin"
+  };
+}
+function withCors(res, cors) {
+  if (Object.keys(cors).length === 0) return res;
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+async function routeApi(request, env, url) {
+  if (url.pathname === "/api/ai/status" && request.method === "GET") {
+    return await handleStatus(request, env);
+  }
+  if (url.pathname === "/api/ai/fission" && request.method === "POST") {
+    return await handleFission(request, env);
+  }
+  if (url.pathname === "/api/ai/reflection" && request.method === "POST") {
+    return await handleReflection(request, env);
+  }
+  if (url.pathname === "/api/ai/music" && request.method === "POST") {
+    return await handleMusic(request, env);
+  }
+  if (url.pathname === "/api/ai/ideas" && request.method === "POST") {
+    return await handleIdeas(request, env);
+  }
+  return Response.json({ error: "not_found" }, { status: 404 });
+}
 var index_default = {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) {
-      if (url.pathname === "/api/ai/status" && request.method === "GET") {
-        return await handleStatus(request, env);
+      const cors = corsHeaders(request, env);
+      if (request.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: cors });
       }
-      if (url.pathname === "/api/ai/fission" && request.method === "POST") {
-        return await handleFission(request, env);
-      }
-      if (url.pathname === "/api/ai/reflection" && request.method === "POST") {
-        return await handleReflection(request, env);
-      }
-      if (url.pathname === "/api/ai/music" && request.method === "POST") {
-        return await handleMusic(request, env);
-      }
-      if (url.pathname === "/api/ai/ideas" && request.method === "POST") {
-        return await handleIdeas(request, env);
-      }
-      return Response.json({ error: "not_found" }, { status: 404 });
+      return withCors(await routeApi(request, env, url), cors);
     }
     return env.ASSETS.fetch(request);
   }

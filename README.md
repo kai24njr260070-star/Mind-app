@@ -219,3 +219,52 @@ npm run sites:build    # build → worker を esbuild でバンドル → assets
 - ビルドを行わない静的配信でも、`public-deploy` を配信ディレクトリに指定すればそのまま動きます
 - リポジトリ直下の `index.html` は**ビルド済み単一ファイル**です(Cloudflare Pages が出力ディレクトリ指定なしでそのまま配信しても起動する形)。Vite の開発用エントリは `app.html` に分けてあり、`npm run dev` では `/app.html` が開きます
 - ソースを変更したら `npm run sites:build` を実行し、`index.html` と `public-deploy/index.html` を作り直してからコミットしてください(`index.html` は生成物です)
+
+## アプリとして使う(macOS / iPhone / iPad / Android)
+
+Web版と同じ画面を、インストールして起動する**アプリ**として包んでいます。データは各アプリ内(端末)に保存され、設定画面のバックアップ書き出し/読み込みで移せます。
+
+| プラットフォーム | 仕組み | 成果物 |
+| --- | --- | --- |
+| macOS | Tauri 2(OSのWebKitを使用) | `Mind Signature.app` |
+| iPhone / iPad | Capacitor 8(iOS 15+) | Xcodeプロジェクト(`ios/`) |
+| Android | Capacitor 8(Android 7+) | Gradleプロジェクト(`android/`) |
+
+### macOS
+
+```bash
+npm run desktop:build   # ビルド + .app 作成
+open "src-tauri/target/release/bundle/macos/Mind Signature.app"
+```
+
+`npm run desktop:dev` で開発起動できます。アイコンは `assets/app-icon.png` から生成したもの(`scripts/make-icon.mjs` + `npx tauri icon`)。
+
+### iPhone / iPad
+
+Xcode 26 以降が必要です(このリポジトリの生成は Xcode なしでも可能ですが、ビルドには Xcode が必要)。
+
+```bash
+npm run native:ios      # build:native → cap sync → Xcodeで開く
+```
+
+Xcodeで `App` ターゲット → Signing & Capabilities で自分のTeamを選び、実機またはシミュレータで実行します。iOSはSwift Package Manager構成なので CocoaPods は不要です。
+
+### Android
+
+Android Studio(Android SDK)とJDK 21 が必要です。
+
+```bash
+npm run native:android  # build:native → cap sync → Android Studioで開く
+```
+
+Android Studioで Run、または `cd android && ./gradlew assembleDebug` で `android/app/build/outputs/apk/debug/app-debug.apk` ができます。ストア配布は `bundleRelease`(AAB)です。
+
+### ネイティブアプリからのAI利用
+
+アプリ内のWebViewは配信元が `capacitor://localhost` / `https://localhost` / `tauri://localhost` になるため、`.env.native` の `VITE_API_BASE` でデプロイ済みWorkerを指定しています(既定: `https://mind-app.pages.dev`)。
+
+Worker側は `ALLOWED_ORIGINS`(カンマ区切り)に載っているOriginだけCORSを返します。**クロスオリジンのリクエストでは環境変数のAIキーを使いません**(設定画面で入力した利用者自身のキーが必要です)。別のWorkerを使う場合は `wrangler.toml` などで `ALLOWED_ORIGINS` を設定してください。
+
+```bash
+npm run build:native    # .env.native を使ったネイティブ用ビルド(dist/index.html を生成)
+```

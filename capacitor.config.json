@@ -1,0 +1,17 @@
+{
+  "appId": "app.mindsignature.mobile",
+  "appName": "Mind Signature",
+  "webDir": "dist",
+  "backgroundColor": "#070b18",
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#070b18"
+  },
+  "android": {
+    "backgroundColor": "#070b18",
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

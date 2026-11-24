@@ -4,3 +4,14 @@ dist/
 .env
 .dev.vars
 /freebuff-sites-build/
+
+# ネイティブアプリのビルド生成物(Capacitorのプロジェクト自体はコミットする)
+src-tauri/target/
+src-tauri/gen/
+ios/App/App/public/
+ios/App/DerivedData/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/.gradle/
+android/local.properties

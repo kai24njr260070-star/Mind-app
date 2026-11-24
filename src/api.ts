@@ -2,6 +2,17 @@ import type { AICandidate, FissionError, GoalIdea, MusicTrack } from "./types";
 import { directFission, directIdeas, directMusic, directReflection, directStatus } from "./directAi";
 import type { IdeaRequestPayload, MusicRequestPayload } from "./aiShared";
 
+/**
+ * ネイティブアプリ(Capacitor/Tauri)では配信元が localhost 系になるため、
+ * ビルド時に VITE_API_BASE で Worker のURLを指定する。
+ * 空なら同一オリジン(Web版)。
+ */
+const API_BASE = String(import.meta.env?.VITE_API_BASE ?? "").replace(/\/+$/, "");
+
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
 export class FissionApiError extends Error {
   constructor(public kind: FissionError, public detail?: string) {
     super(`fission api error: ${kind}`);
@@ -77,7 +88,7 @@ export async function requestFissionCandidates(payload: {
 }): Promise<AICandidate[]> {
   let res: Response;
   try {
-    res = await fetch("/api/ai/fission", {
+    res = await fetch(apiUrl("/api/ai/fission"), {
       method: "POST",
       headers: jsonHeaders(),
       body: JSON.stringify(payload),
@@ -121,7 +132,7 @@ export async function requestReflection(payload: {
 }): Promise<{ summary: string; actions: ReflectionAIAction[] }> {
   let res: Response;
   try {
-    res = await fetch("/api/ai/reflection", {
+    res = await fetch(apiUrl("/api/ai/reflection"), {
       method: "POST",
       headers: jsonHeaders(),
       body: JSON.stringify(payload),
@@ -154,7 +165,7 @@ export async function requestReflection(payload: {
 export async function requestIdeaHints(payload: IdeaRequestPayload): Promise<GoalIdea[]> {
   let res: Response;
   try {
-    res = await fetch("/api/ai/ideas", {
+    res = await fetch(apiUrl("/api/ai/ideas"), {
       method: "POST",
       headers: jsonHeaders(),
       body: JSON.stringify(payload),
@@ -185,7 +196,7 @@ export async function requestMusicSuggestions(
 ): Promise<{ mood: string; summary: string; tracks: MusicTrack[] }> {
   let res: Response;
   try {
-    res = await fetch("/api/ai/music", {
+    res = await fetch(apiUrl("/api/ai/music"), {
       method: "POST",
       headers: jsonHeaders(),
       body: JSON.stringify(payload),
@@ -229,7 +240,7 @@ export async function requestAIStatus(): Promise<{
 }> {
   let res: Response;
   try {
-    res = await fetch("/api/ai/status", { headers: jsonHeaders() });
+    res = await fetch(apiUrl("/api/ai/status"), { headers: jsonHeaders() });
   } catch {
     return directStatus();
   }
