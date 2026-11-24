@@ -8,6 +8,8 @@ const ERROR_MESSAGES: Record<FissionError, string> = {
   ai_failed: "AIによる候補生成に失敗しました。手動入力で作業を続けられます。",
   bad_request: "リクエストが正しくありません。もう一度お試しください。",
   network: "ネットワークに接続できません。保存済みの目標はそのまま使えます。",
+  cors_blocked:
+    "この配信方法(静的ホスティング)では、Freebuff / OpenAI / xAI のAPIはブラウザから直接呼べません。設定で Groq か Gemini を選ぶか、Worker版で配信してください。",
 };
 
 export function FissionBar(): React.JSX.Element {
@@ -44,6 +46,9 @@ export function FissionBar(): React.JSX.Element {
       {fission.phase === "error" && (
         <div className="fission-status">
           <span className="error-text">{ERROR_MESSAGES[fission.error ?? "ai_failed"]}</span>
+          {fission.detail && (
+            <span className="error-detail">理由: {fission.detail}</span>
+          )}
           <div className="row">
             <button className="btn ghost small" onClick={() => startFission(fission.parentId)}>再試行</button>
             <button className="btn ghost small" onClick={() => setManualOpen((v) => !v)}>手動で入力</button>

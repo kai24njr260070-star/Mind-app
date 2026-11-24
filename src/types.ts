@@ -27,7 +27,7 @@ export interface CandidateRecord {
 
 export type AICandidate = { title: string; description: string };
 
-export type FissionError = "not_configured" | "ai_failed" | "bad_request" | "network";
+export type FissionError = "not_configured" | "ai_failed" | "bad_request" | "network" | "cors_blocked";
 
 export interface FissionCandidateLive {
   id: string;
@@ -42,6 +42,8 @@ export interface FissionState {
   phase: "loading" | "ready" | "error";
   candidates: FissionCandidateLive[];
   error?: FissionError;
+  /** 失敗の具体的な理由(provider 401 など)。原因究明用にUIへ出す。 */
+  detail?: string;
 }
 
 /** アニメーション用の揮発データ(localStorageには保存しない) */

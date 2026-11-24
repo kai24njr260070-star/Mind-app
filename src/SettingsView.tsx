@@ -85,6 +85,11 @@ export function SettingsView(): React.JSX.Element {
           分裂候補・振り返りの生成は、Workerがあればそちら経由(/api/ai/*)で、Cloudflare Pages のような静的配信では
           この端末のキーでプロバイダへ直接行われます。キーは画面に表示されません。OpenAI互換(chat/completions)のプロバイダを選べます。
         </p>
+        <p className="page-note">
+          ブラウザ直結(静的配信)で使えるのは <strong>Groq / Gemini</strong> だけです。
+          Freebuff / OpenAI / xAI はブラウザからの直接呼び出しがCORSで遮断されるため、Worker版で配信した場合のみ使えます。
+          迷ったら Groq を選ぶのが最も確実です。
+        </p>
 
         <label className="setting-row">
           <span>プロバイダ</span>
@@ -119,7 +124,7 @@ export function SettingsView(): React.JSX.Element {
           <input
             type="text"
             value={s.aiModel}
-            placeholder={s.providerId === "gemini" ? "gemini-2.5-flash" : s.providerId === "grok" ? "grok-3-mini" : s.providerId === "groq" ? "llama-3.3-70b-versatile" : s.providerId === "openai" ? "gpt-4o-mini" : "自動"}
+            placeholder={s.providerId === "gemini" ? "gemini-2.5-flash" : s.providerId === "grok" ? "grok-3-mini" : s.providerId === "groq" ? "llama-3.3-70b-versatile" : s.providerId === "openai" ? "gpt-4o-mini" : "自動 (deepseek-v4.1-flash など)"}
             onChange={(e) => updateSettings({ aiModel: e.target.value })}
           />
         </label>
@@ -145,7 +150,10 @@ export function SettingsView(): React.JSX.Element {
           )}
           {aiStatus === "failed" && (
             <span className="page-note err">
-              接続できません{aiResult?.error ? `(${aiResult.error})` : ""}。キー/Base URL/モデルを確認してください。
+              接続できません{aiResult?.error ? `(${aiResult.error})` : ""}。
+              {aiResult?.error === "cors_blocked"
+                ? "Groq / Gemini を選ぶか、Worker版で配信してください。"
+                : "キー・モデル・利用枠を確認してください。"}
             </span>
           )}
         </div>
@@ -157,7 +165,7 @@ export function SettingsView(): React.JSX.Element {
 
         <p className="page-note">
           {aiResult?.envConfigured || s.apiKey
-            ? "キーが設定されています(Worker版では環境変数キーの方が優先)。"
+            ? "キーが設定されています(設定画面のキーが環境変数キーより優先されます)。"
             : "キー未設定でも、手動分裂と端末内の簡易振り返り判定で機能は継続します。"}
         </p>
       </div>

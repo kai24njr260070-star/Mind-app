@@ -254,8 +254,14 @@ export async function startFission(goalId: string): Promise<FissionResult> {
   } catch (err) {
     const kind =
       err instanceof Error && "kind" in err ? (err as { kind: FissionError }).kind : "ai_failed";
+    const detail =
+      err instanceof Error && "detail" in err
+        ? (err as { detail?: string }).detail
+        : undefined;
     if (state.fission?.parentId !== goalId) return { ok: false, error: kind };
-    setState({ fission: { parentId: goalId, phase: "error", candidates: [], error: kind } });
+    setState({
+      fission: { parentId: goalId, phase: "error", candidates: [], error: kind, detail },
+    });
     return { ok: false, error: kind };
   }
 }

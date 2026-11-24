@@ -14,14 +14,68 @@ export const PROVIDER_BASES: Record<string, string> = {
   grok: "https://api.x.ai/v1",
 };
 
-/** モデル一覧が取れない場合のフォールバック(空=自動選択必須)。 */
+/** モデル一覧が取れない場合のフォールバック(必ず chat 可能なモデルにする)。 */
 export const PROVIDER_FALLBACK_MODELS: Record<string, string> = {
-  freebuff: "",
+  freebuff: "deepseek-v4.1-flash",
   groq: "llama-3.3-70b-versatile",
   openai: "gpt-4o-mini",
   gemini: "gemini-2.5-flash",
   grok: "grok-3-mini",
 };
+
+/**
+ * ブラウザから直接呼べる(CORSヘッダを返す)プロバイダ。
+ * Freebuff / OpenAI / xAI はブラウザ直結不可(WEBからはCORSで遮断される)。
+ * その場合は Worker 経由(/api/ai/*)で呼ぶ必要がある。
+ */
+export const PROVIDER_BROWSER_DIRECT: Record<string, boolean> = {
+  freebuff: false,
+  openai: false,
+  groq: true,
+  gemini: true,
+  grok: false,
+};
+
+export function supportsBrowserDirect(provider: string): boolean {
+  return PROVIDER_BROWSER_DIRECT[provider] === true;
+}
+
+/** 一覧に混ざる非chatモデル(音声・埋め込み・画像など)を除外する。 */
+const NON_CHAT_MODEL = /(whisper|transcrib|embed|moderation|rerank|\btts\b|audio|speech|image|dall-e|diffusion|sdxl|\bflux\b|guard|safety|\bocr\b|realtime)/i;
+
+/** chatモデルらしい名前か(一覧の先頭が非chatでも誤選択しないため)。 */
+const CHAT_MODEL = /(gpt|claude|llama|gemini|qwen|mistral|mixtral|deepseek|gemma|glm|kimi|grok|command|nova|phi|solar|minimax|mimo|seed|ling|step|granite|nemotron|\bhy\b|laguna|inkling|pareto|trinity|muse|hermes|magistral|devstral|chat)/i;
+
+/** プロバイダごとの優先モデル(軽量・安定なものを先に)。 */
+const PROVIDER_MODEL_PREFERENCE: Record<string, string[]> = {
+  freebuff: ["deepseek-v4.1-flash", "gemini-2.5-flash", "gpt-4o-mini", "gpt-5-nano"],
+  groq: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemma2-9b-it", "qwen"],
+  openai: ["gpt-4o-mini", "gpt-4.1-mini", "gpt-5-mini", "gpt-5-nano"],
+  gemini: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite"],
+  grok: ["grok-3-mini", "grok-4-fast", "grok-3"],
+};
+
+/**
+ * /models の一覧から実際に chat できるモデルを選ぶ。
+ * 単純に先頭を選ぶと whisper 等を拾って生成だけ失敗するため、必ず chat 可能な名前に絞る。
+ */
+export function pickChatModel(ids: string[], provider?: string): string | null {
+  const chat = ids
+    .map((id) => String(id ?? "").replace(/^models\//, "").trim())
+    .filter((id) => id.length > 0 && !NON_CHAT_MODEL.test(id) && CHAT_MODEL.test(id));
+  if (chat.length === 0) return null;
+
+  const preferred = provider ? PROVIDER_MODEL_PREFERENCE[provider] ?? [] : [];
+  for (const want of preferred) {
+    const exact = chat.find((id) => id.toLowerCase() === want.toLowerCase());
+    if (exact) return exact;
+    const partial = chat.find((id) => id.toLowerCase().includes(want.toLowerCase()));
+    if (partial) return partial;
+  }
+
+  const cheap = chat.find((id) => /(mini|nano|flash|lite|small|haiku|turbo|fast)/i.test(id));
+  return cheap ?? chat[0] ?? null;
+}
 
 export function normBase(base: string): string {
   return base.replace(/\/+$/, "");

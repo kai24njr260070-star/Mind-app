@@ -6,6 +6,7 @@ import {
   fissionRequestBody,
   parseCandidates,
   parseReflection,
+  pickChatModel,
   reflectionRequestBody,
   type FissionRequestPayload,
   type ReflectionRequestPayload,
@@ -22,7 +23,6 @@ export interface Env {
 
 // プロバイダ定義・プロンプト・パースは ブラウザ直結経路と共有する(src/aiShared.ts)。
 const DEFAULT_BASES = PROVIDER_BASES;
-const FALLBACK_MODELS = PROVIDER_FALLBACK_MODELS;
 
 /**
  * 環境変数キーの割当(provider → env キー名)。
@@ -62,6 +62,17 @@ function normBaseUrl(base: string): string {
   return base.replace(/\/+$/, "");
 }
 
+/** プロバイダの応答本文から、キーを含まない短い失敗理由を作る。 */
+async function failureDetail(res: Response): Promise<string> {
+  let text = "";
+  try {
+    text = (await res.text()).slice(0, 300).replace(/\s+/g, " ").trim();
+  } catch {
+    // 本文なし
+  }
+  return `provider ${res.status}${text ? `: ${text}` : ""}`;
+}
+
 async function listModels(base: string, key: string): Promise<string[]> {
   const res = await fetch(`${normBaseUrl(base)}/models`, {
     headers: { Authorization: `Bearer ${key}` },
@@ -70,43 +81,80 @@ async function listModels(base: string, key: string): Promise<string[]> {
   const json = (await res.json()) as { data?: Array<{ id?: string }> };
   return (json.data ?? [])
     .map((m) => m.id)
-    .filter((id): id is string => typeof id === "string" && id.length > 0)
-    .map((id) => id.replace(/^models\//, "")); // Gemini互換の models/ 接頭辞を外す
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
 }
 
-function pickLightModel(ids: string[]): string | null {
-  return ids.find((id) => /mini|flash|lite|smallest/i.test(id)) ?? ids[0] ?? null;
+// モデル一覧のキャッシュ(同じ isolate 内で繰り返し叩かない)。
+const cachedModelsByBase = new Map<string, string[]>();
+
+async function discoverModel(cfg: AIConfig): Promise<string | null> {
+  if (!cfg.key) return null;
+  const cacheKey = `${cfg.provider}:${cfg.baseUrl}:${cfg.key.slice(0, 6)}`;
+  const cached = cachedModelsByBase.get(cacheKey);
+  if (cached) return pickChatModel(cached, cfg.provider);
+  try {
+    const ids = await listModels(cfg.baseUrl, cfg.key);
+    cachedModelsByBase.set(cacheKey, ids);
+    return pickChatModel(ids, cfg.provider);
+  } catch {
+    // 一覧APIが無い/権限が無いプロバイダもある(フォールバックモデルで試す)
+    return null;
+  }
 }
 
-let cachedModelByBase = new Map<string, string>();
+/**
+ * 試すモデルの順番: 設定指定 → 一覧から自動選択 → プロバイダ既定。
+ * (以前は baseUrl の末尾をモデル名にしていたため "paid" を送って失敗していた)
+ */
+async function resolveModels(cfg: AIConfig): Promise<string[]> {
+  const models: string[] = [];
+  const push = (model: string | null | undefined): void => {
+    const m = String(model ?? "").trim();
+    if (m && !models.includes(m)) models.push(m);
+  };
+  push(cfg.modelHint);
+  if (!cfg.modelHint) push(await discoverModel(cfg));
+  push(PROVIDER_FALLBACK_MODELS[cfg.provider]);
+  return models;
+}
 
-/** modelHint(設定指定) → 自動選択(一覧) → プロバイダ別フォールバック の順で決める。 */
-async function resolveModel(cfg: AIConfig): Promise<string | null> {
-  if (cfg.modelHint) return cfg.modelHint;
-  if (cfg.key && cfg.baseUrl) {
-    const cacheKey = `${cfg.provider}:${cfg.baseUrl}:${cfg.key.slice(0, 6)}`;
-    const cached = cachedModelByBase.get(cacheKey);
-    if (cached) return cached;
-    try {
-      const ids = await listModels(cfg.baseUrl, cfg.key);
-      const picked = pickLightModel(ids);
-      if (picked) {
-        cachedModelByBase.set(cacheKey, picked);
-        return picked;
-      }
-    } catch {
-      // 一覧取得不可のプロバイダもある(下のフォールバックへ)
+type ChatResult =
+  | { ok: true; content: string }
+  | { ok: false; status: number; detail: string };
+
+async function chatCompletion(
+  cfg: AIConfig,
+  body: Record<string, unknown>
+): Promise<ChatResult> {
+  if (!cfg.key) return { ok: false, status: 0, detail: "not_configured" };
+  try {
+    const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cfg.key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      return { ok: false, status: res.status, detail: await failureDetail(res) };
     }
+    const json = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    return { ok: true, content: json.choices?.[0]?.message?.content ?? "" };
+  } catch (e) {
+    return {
+      ok: false,
+      status: 0,
+      detail: e instanceof Error ? `network: ${e.message}` : "network",
+    };
   }
-  const fallback = FALLBACK_MODELS[cfg.provider];
-  if (fallback) return fallback;
-  // custom などでモデルが決められない場合
-  if (cfg.baseUrl) {
-    // base URL の末尾がモデル名になっている形式(model:xxx)を許容
-    const asModel = cfg.baseUrl.split("/").pop();
-    if (asModel && /[\w.-]/.test(asModel)) return asModel;
-  }
-  return null;
+}
+
+/** モデル違い(400/404/422)なら次の候補を試す価値がある。 */
+function shouldRetryWithNextModel(status: number): boolean {
+  return status === 400 || status === 404 || status === 422;
 }
 
 type FissionRequestBody = FissionRequestPayload;
@@ -114,10 +162,7 @@ type FissionRequestBody = FissionRequestPayload;
 async function handleFission(request: Request, env: Env): Promise<Response> {
   const cfg = requestAIConfig(request, env);
   if (!cfg.key || !cfg.baseUrl) {
-    return Response.json(
-      { error: "not_configured" },
-      { status: 503 }
-    );
+    return Response.json({ error: "not_configured" }, { status: 503 });
   }
 
   let body: FissionRequestBody;
@@ -132,35 +177,32 @@ async function handleFission(request: Request, env: Env): Promise<Response> {
     return Response.json({ error: "bad_request" }, { status: 400 });
   }
 
-  const model = await resolveModel(cfg);
-  if (!model) {
-    return Response.json({ error: "ai_failed" }, { status: 502 });
+  const models = await resolveModels(cfg);
+  if (models.length === 0) {
+    return Response.json(
+      { error: "ai_failed", detail: "モデルを決定できませんでした" },
+      { status: 502 }
+    );
   }
 
-  try {
-    const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${cfg.key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(fissionRequestBody(model, body)),
-    });
-    if (!res.ok) {
-      return Response.json({ error: "ai_failed" }, { status: 502 });
+  let detail = "";
+  for (const model of models) {
+    const result = await chatCompletion(cfg, fissionRequestBody(model, body));
+    if (!result.ok) {
+      detail = `${model} → ${result.detail}`;
+      if (shouldRetryWithNextModel(result.status)) continue;
+      break;
     }
-    const json = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = json.choices?.[0]?.message?.content ?? "";
-    const candidates = parseCandidates(content);
-    if (candidates.length === 0) {
-      return Response.json({ error: "ai_failed" }, { status: 502 });
+    try {
+      const candidates = parseCandidates(result.content);
+      if (candidates.length > 0) return Response.json({ candidates });
+      detail = `${model} → 候補を解析できませんでした`;
+    } catch {
+      detail = `${model} → JSON以外の応答`;
     }
-    return Response.json({ candidates });
-  } catch {
-    return Response.json({ error: "ai_failed" }, { status: 502 });
   }
+
+  return Response.json({ error: "ai_failed", detail }, { status: 502 });
 }
 
 type ReflectionRequestBody = ReflectionRequestPayload;
@@ -186,33 +228,41 @@ async function handleReflection(request: Request, env: Env): Promise<Response> {
       actions: [],
     });
   }
-  const model = await resolveModel(cfg);
-  if (!model) {
-    return Response.json({ error: "ai_failed" }, { status: 502 });
+
+  const models = await resolveModels(cfg);
+  if (models.length === 0) {
+    return Response.json(
+      { error: "ai_failed", detail: "モデルを決定できませんでした" },
+      { status: 502 }
+    );
   }
 
-  try {
-    const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${cfg.key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(reflectionRequestBody(model, { ...body, goals })),
-    });
-    if (!res.ok) {
-      return Response.json({ error: "ai_failed" }, { status: 502 });
+  let detail = "";
+  for (const model of models) {
+    const result = await chatCompletion(
+      cfg,
+      reflectionRequestBody(model, { ...body, goals })
+    );
+    if (!result.ok) {
+      detail = `${model} → ${result.detail}`;
+      if (shouldRetryWithNextModel(result.status)) continue;
+      break;
     }
-    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = json.choices?.[0]?.message?.content ?? "";
-    const parsed = parseReflection(content);
-    return Response.json(parsed);
-  } catch {
-    return Response.json({ error: "ai_failed" }, { status: 502 });
+    try {
+      return Response.json(parseReflection(result.content));
+    } catch {
+      detail = `${model} → JSON以外の応答`;
+    }
   }
+
+  return Response.json({ error: "ai_failed", detail }, { status: 502 });
 }
 
-/** 設定画面の「接続テスト」用:キー/base/modelの有効性をキー其の物は返さず確認する。 */
+/**
+ * 設定画面の「接続テスト」用。
+ * 実際の生成と同じモデルで小さな chat を1回だけ呼び、生成できることまで確認する。
+ * (以前は /models が取れるだけで OK にしていたため、生成だけ失敗する状態を見逃していた)
+ */
 async function handleStatus(request: Request, env: Env): Promise<Response> {
   const cfg = requestAIConfig(request, env);
   const envConfigured = Boolean(
@@ -224,46 +274,29 @@ async function handleStatus(request: Request, env: Env): Promise<Response> {
   if (!cfg.key || !cfg.baseUrl) {
     return Response.json({ configured: false, ok: false, model: null, error: null, envConfigured });
   }
-  try {
-    const model = await resolveModel({ ...cfg, modelHint: cfg.modelHint });
-    if (!model) {
-      return Response.json({ configured: true, ok: false, model: null, error: "model_not_found", envConfigured });
-    }
-    // 実際に models 一覧が取れたかで成功判定(課金なし)
-    let ok = false;
-    try {
-      await listModels(cfg.baseUrl, cfg.key!);
-      ok = true;
-    } catch {
-      // 一覧APIを持たない場合(Gemini互換も含む)は、ごく小さなchat呼び出しで検証
-      try {
-        const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${cfg.key!}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model,
-            max_tokens: 1,
-            messages: [{ role: "user", content: "ping" }],
-          }),
-        });
-        ok = res.ok;
-      } catch {
-        ok = false;
-      }
-    }
-    return Response.json({ configured: true, ok, model, error: ok ? null : "probe_failed", envConfigured });
-  } catch (e) {
-    return Response.json({
-      configured: true,
-      ok: false,
-      model: null,
-      error: e instanceof Error ? e.message : "unknown",
-      envConfigured,
+
+  const models = await resolveModels(cfg);
+  let detail = "モデルを決定できませんでした";
+  for (const model of models) {
+    const result = await chatCompletion(cfg, {
+      model,
+      max_tokens: 1,
+      messages: [{ role: "user", content: "ping" }],
     });
+    if (result.ok) {
+      return Response.json({ configured: true, ok: true, model, error: null, envConfigured });
+    }
+    detail = `${model} → ${result.detail}`;
+    if (!shouldRetryWithNextModel(result.status)) break;
   }
+
+  return Response.json({
+    configured: true,
+    ok: false,
+    model: models[0] ?? null,
+    error: detail,
+    envConfigured,
+  });
 }
 
 export default {

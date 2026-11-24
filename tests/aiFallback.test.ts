@@ -112,6 +112,37 @@ describe("静的ホスティングでのブラウザ直結", () => {
     expect(status.model).toBe("llama-3.3-70b-versatile");
   });
 
+  it("ブラウザ直結できないFreebuffは cors_blocked を返す", async () => {
+    localStorage.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({ providerId: "freebuff", apiKey: "sk_test_key", aiModel: "" })
+    );
+    const calls = stubFetch((url) =>
+      url.startsWith("/api/") ? staticHostResponse() : jsonResponse({ choices: [] })
+    );
+
+    await expect(requestFissionCandidates(payload)).rejects.toMatchObject({ kind: "cors_blocked" });
+    // プロバイダへは一切リクエストしない(CORSで失敗するため)
+    expect(calls.some((c) => !c.url.startsWith("/api/"))).toBe(false);
+  });
+
+  it("Workerの失敗理由(detail)をUIへ渡す", async () => {
+    stubFetch((url) => {
+      if (url === "/api/ai/fission") {
+        return new Response(
+          JSON.stringify({ error: "ai_failed", detail: "llama-3.3-70b-versatile → provider 401: Invalid API Key" }),
+          { status: 502, headers: { "content-type": "application/json" } }
+        );
+      }
+      return staticHostResponse();
+    });
+
+    await expect(requestFissionCandidates(payload)).rejects.toMatchObject({
+      kind: "ai_failed",
+      detail: "llama-3.3-70b-versatile → provider 401: Invalid API Key",
+    });
+  });
+
   it("直結がCORS等で失敗したら network として扱う", async () => {
     stubFetch((url) => {
       if (url.startsWith("/api/")) return staticHostResponse();

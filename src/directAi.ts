@@ -6,7 +6,9 @@ import {
   normBase,
   parseCandidates,
   parseReflection,
+  pickChatModel,
   reflectionRequestBody,
+  supportsBrowserDirect,
   type FissionRequestPayload,
   type ParsedReflectionAction,
   type ReflectionRequestPayload,
@@ -16,7 +18,7 @@ import {
  * ブラウザ直結のAI呼び出し。
  * Cloudflare Pages のような静的配信では /api/ai/* が存在しないため、
  * この端末(localStorage)のキーでプロバイダへ直接つなぐ。
- * ※Groq / Gemini など CORS を許可しているプロバイダでのみ動く。
+ * ※CORSを許可しているプロバイダ(Groq / Gemini)でのみ動く。
  */
 
 const SETTINGS_KEY = "mind-signature-settings-v1";
@@ -36,20 +38,57 @@ function readSettings(): Record<string, unknown> {
   }
 }
 
-/** ブラウザ直結に必要な情報が揃っていれば返す(キー未入力なら null)。 */
-export function browserAIConfig(): BrowserAIConfig | null {
+/** 設定からプロバイダ情報を読む(キーが無ければ null)。 */
+function readConfig(): { provider: string; key: string; hint: string; baseUrl: string } | null {
   const s = readSettings();
   const key = typeof s.apiKey === "string" ? s.apiKey.trim() : "";
   if (!key) return null;
   const provider = (typeof s.providerId === "string" && s.providerId) || "freebuff";
-  const baseUrl = normBase(PROVIDER_BASES[provider] ?? PROVIDER_BASES.freebuff);
   const hint = typeof s.aiModel === "string" ? s.aiModel.trim() : "";
-  const model = hint || PROVIDER_FALLBACK_MODELS[provider] || "";
-  if (!model) return null;
-  return { provider, key, model, baseUrl };
+  const baseUrl = normBase(PROVIDER_BASES[provider] ?? PROVIDER_BASES.freebuff);
+  return { provider, key, hint, baseUrl };
 }
 
-async function chat(cfg: BrowserAIConfig, body: Record<string, unknown>): Promise<string> {
+async function listModels(cfg: { baseUrl: string; key: string }): Promise<string[]> {
+  const res = await fetch(`${cfg.baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${cfg.key}` },
+  });
+  if (!res.ok) throw new Error(`models ${res.status}`);
+  const json = (await res.json()) as { data?: Array<{ id?: string }> };
+  return (json.data ?? [])
+    .map((m) => m.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
+/**
+ * ブラウザ直結に必要な情報を解決する。
+ * 失敗理由は Error の message に短いコードで入れる(api.ts が UI 用に変換する)。
+ *  - not_configured: キー未入力
+ *  - cors_blocked: このプロバイダはブラウザから直接呼べない(Freebuff/OpenAI/xAI)
+ */
+async function resolveBrowserAIConfig(): Promise<BrowserAIConfig> {
+  const cfg = readConfig();
+  if (!cfg) throw new Error("not_configured");
+  if (!supportsBrowserDirect(cfg.provider)) throw new Error("cors_blocked");
+
+  let model = cfg.hint || PROVIDER_FALLBACK_MODELS[cfg.provider] || "";
+  if (!model) {
+    try {
+      model = pickChatModel(await listModels(cfg), cfg.provider) ?? "";
+    } catch {
+      // 一覧が取れない場合は下でエラーにする
+    }
+  }
+  if (!model) throw new Error("model_not_found");
+  return { provider: cfg.provider, key: cfg.key, model, baseUrl: cfg.baseUrl };
+}
+
+type ChatResult = { ok: true; content: string } | { ok: false; detail: string };
+
+async function chat(
+  cfg: BrowserAIConfig,
+  body: Record<string, unknown>
+): Promise<ChatResult> {
   let res: Response;
   try {
     res = await fetch(`${cfg.baseUrl}/chat/completions`, {
@@ -58,31 +97,40 @@ async function chat(cfg: BrowserAIConfig, body: Record<string, unknown>): Promis
       body: JSON.stringify(body),
     });
   } catch {
-    throw new Error("cors_or_network");
+    // CORSで遮断された場合もブラウザは TypeError になる
+    return { ok: false, detail: "cors_or_network" };
   }
-  if (!res.ok) throw new Error(`provider ${res.status}`);
+  if (!res.ok) {
+    let text = "";
+    try {
+      text = (await res.text()).slice(0, 200).replace(/\s+/g, " ").trim();
+    } catch {
+      // 本文なし
+    }
+    return { ok: false, detail: `provider ${res.status}${text ? `: ${text}` : ""}` };
+  }
   const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return json.choices?.[0]?.message?.content ?? "";
+  return { ok: true, content: json.choices?.[0]?.message?.content ?? "" };
 }
 
 export async function directFission(payload: FissionRequestPayload): Promise<AICandidate[]> {
-  const cfg = browserAIConfig();
-  if (!cfg) throw new Error("not_configured");
-  const content = await chat(cfg, fissionRequestBody(cfg.model, payload));
-  return parseCandidates(content);
+  const cfg = await resolveBrowserAIConfig();
+  const res = await chat(cfg, fissionRequestBody(cfg.model, payload));
+  if (!res.ok) throw new Error(res.detail);
+  return parseCandidates(res.content);
 }
 
 export async function directReflection(payload: ReflectionRequestPayload): Promise<{
   summary: string;
   actions: ParsedReflectionAction[];
 }> {
-  const cfg = browserAIConfig();
-  if (!cfg) throw new Error("not_configured");
-  const content = await chat(cfg, reflectionRequestBody(cfg.model, payload));
-  return parseReflection(content);
+  const cfg = await resolveBrowserAIConfig();
+  const res = await chat(cfg, reflectionRequestBody(cfg.model, payload));
+  if (!res.ok) throw new Error(res.detail);
+  return parseReflection(res.content);
 }
 
-/** 設定画面の「接続テスト」(直結)。キーそのものは返さない。 */
+/** 設定画面の「接続テスト」(直結)。実際の生成と同じ小さな chat で確認する。 */
 export async function directStatus(): Promise<{
   configured: boolean;
   ok: boolean;
@@ -90,22 +138,49 @@ export async function directStatus(): Promise<{
   error: string | null;
   envConfigured: boolean;
 }> {
-  const cfg = browserAIConfig();
+  const cfg = readConfig();
   if (!cfg) {
     return { configured: false, ok: false, model: null, error: null, envConfigured: false };
   }
+  if (!supportsBrowserDirect(cfg.provider)) {
+    return {
+      configured: true,
+      ok: false,
+      model: cfg.hint || null,
+      error: "cors_blocked",
+      envConfigured: false,
+    };
+  }
   try {
-    const res = await fetch(`${cfg.baseUrl}/models`, {
-      headers: { Authorization: `Bearer ${cfg.key}` },
+    const resolved = await resolveBrowserAIConfig();
+    const res = await chat(resolved, {
+      model: resolved.model,
+      max_tokens: 1,
+      messages: [{ role: "user", content: "ping" }],
     });
-    if (res.ok) {
-      return { configured: true, ok: true, model: cfg.model, error: null, envConfigured: false };
+    if (!res.ok) {
+      return {
+        configured: true,
+        ok: false,
+        model: resolved.model,
+        error: res.detail,
+        envConfigured: false,
+      };
     }
-    // 一覧APIを持たない/権限が無いプロバイダは、ごく小さなchatで確認する
-    await chat(cfg, { model: cfg.model, max_tokens: 1, messages: [{ role: "user", content: "ping" }] });
-    return { configured: true, ok: true, model: cfg.model, error: null, envConfigured: false };
+    return {
+      configured: true,
+      ok: true,
+      model: resolved.model,
+      error: null,
+      envConfigured: false,
+    };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "unknown";
-    return { configured: true, ok: false, model: cfg.model, error: msg, envConfigured: false };
+    return {
+      configured: true,
+      ok: false,
+      model: null,
+      error: e instanceof Error ? e.message : "unknown",
+      envConfigured: false,
+    };
   }
 }

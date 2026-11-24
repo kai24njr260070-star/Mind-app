@@ -227,6 +227,15 @@ input[type="text"]:focus {
   text-align: center;
 }
 
+.error-detail {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  word-break: break-word;
+  max-width: 100%;
+}
+
 .spinner {
   width: 18px;
   height: 18px;

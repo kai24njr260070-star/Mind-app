@@ -79,7 +79,9 @@ npx wrangler dev   # http://localhost:8787 で Worker+静的配信
 
 **方法2: Worker環境変数** — `.env` に `OPENAI_API_KEY=...`(Freebuff/OpenAIのキー)、`GROQ_API_KEY=...`(Groq)、`GEMINI_API_KEY=...`(Gemini)、`XAI_API_KEY=...`(Grok)を書き、`wrangler dev` を再起動。設定画面でキーを未入力のままプロバイダを選ぶと、対応する環境変数キーへフォールバックします(base URLの設定は不要)。設定画面にキーが入力されている場合はそちらを優先します。
 
-**Cloudflare Pages(静的配信)で使う場合** — そのホストには `/api/ai/*` が無いため、アプリは自動で「ブラウザ直結」に切り替えます(設定画面で入れたキーで `api.groq.com` などを直接呼ぶ)。Groq / Gemini はCORSを許可しているのでそのまま動きます。Worker付きで配信している場合(Sites など)は従来どおりサーバー経由です。
+**Cloudflare Pages で使う場合** — `npm run sites:build` は `public-deploy/_worker.js` も生成します。Cloudflare Pages のビルド設定を「ビルドコマンド `npm run sites:build` / 出力ディレクトリ `public-deploy`」にしていれば `/api/ai/*` がサーバー側で動き、`_worker.js` が無い純粋な静的配信のときだけアプリが自動で「ブラウザ直結」へ切り替わります。
+
+ブラウザ直結で使えるのは **Groq / Gemini のみ** です(Freebuff / OpenAI / xAI はCORSヘッダを返さないため、ブラウザからは直接呼べません)。また、Cloudflare の環境変数にキーを置いても、`_worker.js` の無い静的配信ではアプリに届きません。その場合は設定画面でキーを入れるか、`_worker.js` 付きで配信してください。
 キーを全端末で共有したい場合は、Worker版の Secrets に `GROQ_API_KEY` 等を入れてください。
 
 鍵が無い/失敗した場合、UI は明示的なエラーカードを出し **手動入力で作業を続けられる**(仕様書 §13 の品質要件)。AI が生成に失敗しても中核体験は止まらない設計。
@@ -193,6 +195,7 @@ npm run sites:build    # build → worker を esbuild でバンドル → assets
 `npm run sites:build` を実行すると、JSとCSSをHTMLに埋め込んだ**単一ファイル**が `public-deploy/index.html` に生成されます(外部アセット参照ゼロ)。
 
 - Cloudflare のビルド設定: ビルドコマンド `npm run sites:build` / 出力ディレクトリ `public-deploy`
+- `public-deploy/_worker.js` も同時に生成されます(Pages の高度なモード)。これがあると Pages でも `/api/ai/*` が動き、Freebuff / OpenAI / xAI のキーもサーバー側で使えます。ビルドを行わない場合は `_worker.js` が無いため、ブラウザ直結(Groq / Gemini)のみになります
 - ビルドを行わない静的配信でも、`public-deploy` を配信ディレクトリに指定すればそのまま動きます
 - リポジトリ直下の `index.html` は**ビルド済み単一ファイル**です(Cloudflare Pages が出力ディレクトリ指定なしでそのまま配信しても起動する形)。Vite の開発用エントリは `app.html` に分けてあり、`npm run dev` では `/app.html` が開きます
 - ソースを変更したら `npm run sites:build` を実行し、`index.html` と `public-deploy/index.html` を作り直してからコミットしてください(`index.html` は生成物です)

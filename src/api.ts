@@ -1,8 +1,8 @@
 import type { AICandidate, FissionError } from "./types";
-import { browserAIConfig, directFission, directReflection, directStatus } from "./directAi";
+import { directFission, directReflection, directStatus } from "./directAi";
 
 export class FissionApiError extends Error {
-  constructor(public kind: FissionError) {
+  constructor(public kind: FissionError, public detail?: string) {
     super(`fission api error: ${kind}`);
   }
 }
@@ -13,22 +13,31 @@ function notWorkerApi(res: Response): boolean {
   return res.status === 404 || res.status === 405 || !type.includes("application/json");
 }
 
+/**
+ * ブラウザ直結の失敗理由(Error.message)をUI向けの種別へ変換する。
+ *  - cors_blocked: そのプロバイダはブラウザ直結できない(Frebuff/OpenAI/xAI)
+ *  - network: 通信断・CORS遮断
+ *  - それ以外(provider 401 など)は ai_failed とし、理由を detail に残す
+ */
+function directError(err: unknown): FissionApiError {
+  const msg = err instanceof Error ? err.message : "";
+  if (msg === "not_configured") return new FissionApiError("not_configured");
+  if (msg === "cors_blocked") return new FissionApiError("cors_blocked");
+  if (msg === "model_not_found") {
+    return new FissionApiError("ai_failed", "利用できるモデルを決められませんでした。設定でモデル名を指定してください。");
+  }
+  if (msg === "cors_or_network") return new FissionApiError("network");
+  return new FissionApiError("ai_failed", msg || undefined);
+}
+
 /** Workerが使えないとき、この端末のキーでプロバイダへ直接つなぐ。 */
 async function viaDirect<T>(run: () => Promise<T>): Promise<T> {
-  if (!browserAIConfig()) throw new FissionApiError("not_configured");
   try {
     return await run();
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "";
-    throw new FissionApiError(msg === "cors_or_network" ? "network" : "ai_failed");
+    throw directError(e);
   }
 }
-
-/**
- * 設定画面で入力されたキーを設定localStorageから直接読む
- * (store.ts は api.ts を import しているため、循環参照を避ける)。
- * ※jsonHeaders 経由で provider/base/model も一緒に読むため、この関数は後方互換として残置せず削除。
- */
 
 const jsonHeaders = (): Record<string, string> => {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -42,6 +51,22 @@ const jsonHeaders = (): Record<string, string> => {
   }
   return headers;
 };
+
+/** Worker のエラー応答から種別と理由を取り出す。 */
+async function workerError(res: Response): Promise<FissionApiError> {
+  let kind: FissionError = res.status === 503 ? "not_configured" : "ai_failed";
+  let detail: string | undefined;
+  try {
+    const json = (await res.json()) as { error?: string; detail?: string };
+    if (json.error && ["not_configured", "ai_failed", "bad_request"].includes(json.error)) {
+      kind = json.error as FissionError;
+    }
+    if (typeof json.detail === "string" && json.detail.trim()) detail = json.detail.trim();
+  } catch {
+    // 本文なし; ステータスコードを優先
+  }
+  return new FissionApiError(kind, detail);
+}
 
 export async function requestFissionCandidates(payload: {
   parent: { title: string; description?: string };
@@ -59,23 +84,10 @@ export async function requestFissionCandidates(payload: {
   } catch {
     return viaDirect(() => directFission(payload));
   }
-  if (notWorkerApi(res) || res.status === 503) {
+  if (notWorkerApi(res)) {
     return viaDirect(() => directFission(payload));
   }
-  if (!res.ok) {
-    let kind: FissionError = "ai_failed";
-    if (res.status === 503) kind = "not_configured";
-    else if (res.status === 400) kind = "bad_request";
-    try {
-      const json = (await res.json()) as { error?: string };
-      if (json.error && ["not_configured", "ai_failed", "bad_request"].includes(json.error)) {
-        kind = json.error as FissionError;
-      }
-    } catch {
-      /* 本文なし; ステータスコードを優先 */
-    }
-    throw new FissionApiError(kind);
-  }
+  if (!res.ok) throw await workerError(res);
   const json = (await res.json()) as { candidates?: AICandidate[] };
   const list = (json.candidates ?? []).filter(
     (c) => typeof c?.title === "string" && c.title.trim().length > 0
@@ -116,10 +128,10 @@ export async function requestReflection(payload: {
   } catch {
     return viaDirect(() => directReflection(payload));
   }
-  if (notWorkerApi(res) || res.status === 503) {
+  if (notWorkerApi(res)) {
     return viaDirect(() => directReflection(payload));
   }
-  if (!res.ok) throw new FissionApiError(res.status === 503 ? "not_configured" : "ai_failed");
+  if (!res.ok) throw await workerError(res);
   const json = (await res.json()) as {
     summary?: string;
     actions?: Array<{ goalIdx?: unknown; kind?: unknown; label?: unknown; days?: unknown }>;
@@ -137,7 +149,7 @@ export async function requestReflection(payload: {
   return { summary: String(json.summary ?? "").trim(), actions };
 }
 
-/** 設定画面用:サーバー側からキーの有効性を確認(キーそのものは返さない)。 */
+/** 設定画面用:実際に生成できるかを確認する(キーそのものは返さない)。 */
 export async function requestAIStatus(): Promise<{
   configured: boolean;
   ok: boolean;
@@ -145,28 +157,29 @@ export async function requestAIStatus(): Promise<{
   error: string | null;
   envConfigured: boolean;
 }> {
+  let res: Response;
   try {
-    const res = await fetch("/api/ai/status", { headers: jsonHeaders() });
-    if (notWorkerApi(res) && browserAIConfig()) return directStatus();
-    if (!res.ok) {
-      return { configured: false, ok: false, model: null, error: `status ${res.status}`, envConfigured: false };
-    }
-    const json = (await res.json()) as {
-      configured?: boolean;
-      ok?: boolean;
-      model?: string | null;
-      error?: string | null;
-      envConfigured?: boolean;
-    };
-    return {
-      configured: json.configured === true,
-      ok: json.ok === true,
-      model: json.model ?? null,
-      error: json.error ?? null,
-      envConfigured: json.envConfigured === true,
-    };
+    res = await fetch("/api/ai/status", { headers: jsonHeaders() });
   } catch {
-    if (browserAIConfig()) return directStatus();
-    return { configured: false, ok: false, model: null, error: "network", envConfigured: false };
+    return directStatus();
   }
+  // /api が無いホストでは HTML が返るので、その端末のキーで直結確認する
+  if (notWorkerApi(res)) return directStatus();
+  if (!res.ok) {
+    return { configured: false, ok: false, model: null, error: `status ${res.status}`, envConfigured: false };
+  }
+  const json = (await res.json()) as {
+    configured?: boolean;
+    ok?: boolean;
+    model?: string | null;
+    error?: string | null;
+    envConfigured?: boolean;
+  };
+  return {
+    configured: json.configured === true,
+    ok: json.ok === true,
+    model: json.model ?? null,
+    error: json.error ?? null,
+    envConfigured: json.envConfigured === true,
+  };
 }
