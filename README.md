@@ -266,5 +266,5 @@ Android Studioで Run、または `cd android && ./gradlew assembleDebug` で `a
 Worker側は `ALLOWED_ORIGINS`(カンマ区切り)に載っているOriginだけCORSを返します。**クロスオリジンのリクエストでは環境変数のAIキーを使いません**(設定画面で入力した利用者自身のキーが必要です)。別のWorkerを使う場合は `wrangler.toml` などで `ALLOWED_ORIGINS` を設定してください。
 
 ```bash
-npm run build:native    # .env.native を使ったネイティブ用ビルド(dist/index.html を生成)
+npm run build:native    # .env.native を使ったネイティブ用ビルド(dist-native/index.html を生成)
 ```

@@ -10,7 +10,7 @@
     "deploy": "npm run build && wrangler deploy",
     "sites:build": "npm run build && node scripts/inline-assets.mjs && esbuild worker/index.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=freebuff-sites-build/worker/index.js && esbuild worker/index.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=public-deploy/_worker.js && esbuild worker/index.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=_worker.js",
     "worker:dev": "wrangler dev",
-    "build:native": "tsc && vite build --mode native && node scripts/native-web.mjs",
+    "build:native": "tsc && vite build --mode native --outDir dist-native && node scripts/native-web.mjs",
     "native:sync": "npm run build:native && cap sync",
     "native:ios": "npm run native:sync && cap open ios",
     "native:android": "npm run native:sync && cap open android",

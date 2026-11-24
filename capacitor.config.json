@@ -1,7 +1,7 @@
 {
   "appId": "app.mindsignature.mobile",
   "appName": "Mind Signature",
-  "webDir": "dist",
+  "webDir": "dist-native",
   "backgroundColor": "#070b18",
   "ios": {
     "contentInset": "always",
